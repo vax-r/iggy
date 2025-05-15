@@ -58,7 +58,7 @@ impl IggyClient {
         IggyClientBuilder::new()
     }
 
-    /// Creates a new `IggyClientBuilder`.
+    /// Creates a new `IggyClientBuilder` from the given connection string.
     pub fn builder_from_connection_string(
         connection_string: &str,
     ) -> Result<IggyClientBuilder, IggyError> {
