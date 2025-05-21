@@ -27,7 +27,7 @@ use bytes::{BufMut, Bytes, BytesMut};
 use iggy_binary_protocol::{BinaryClient, BinaryTransport, PersonalAccessTokenClient, UserClient};
 use iggy_common::{
     AutoLogin, ClientState, Command, ConnectionString, Credentials, DiagnosticEvent, IggyDuration,
-    IggyError, IggyErrorDiscriminants, IggyTimestamp,
+    IggyError, IggyErrorDiscriminants, IggyTimestamp, TcpConnectionStringOptions,
 };
 use rustls::pki_types::{CertificateDer, ServerName, pem::PemObject};
 use std::net::SocketAddr;
@@ -179,7 +179,7 @@ impl TcpClient {
 
     pub fn from_connection_string(connection_string: &str) -> Result<Self, IggyError> {
         Self::create(Arc::new(
-            ConnectionString::from_str(connection_string)?.into(),
+            ConnectionString::<TcpConnectionStringOptions>::from_str(connection_string)?.into(),
         ))
     }
 
