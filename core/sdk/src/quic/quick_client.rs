@@ -21,10 +21,7 @@ use iggy_binary_protocol::{
     BinaryClient, BinaryTransport, Client, PersonalAccessTokenClient, UserClient,
 };
 
-use crate::prelude::IggyDuration;
-use crate::prelude::IggyError;
-use crate::prelude::IggyTimestamp;
-use crate::quic::quick_config::QuicClientConfig;
+use crate::prelude::{IggyDuration, IggyError, IggyTimestamp, QuicClientConfig};
 use crate::quic::skip_server_verification::SkipServerVerification;
 use async_broadcast::{Receiver, Sender, broadcast};
 use async_trait::async_trait;

@@ -20,11 +20,11 @@
 use crate::clients::client::IggyClient;
 use crate::http::http_client::HttpClient;
 use crate::http::http_config::HttpClientConfig;
-use crate::prelude::ClientError;
-use crate::prelude::IggyDuration;
-use crate::prelude::{TcpClientConfig, TcpClientReconnectionConfig};
+use crate::prelude::{
+    ClientError, IggyDuration, QuicClientConfig, QuicClientReconnectionConfig, TcpClientConfig,
+    TcpClientReconnectionConfig,
+};
 use crate::quic::quick_client::QuicClient;
-use crate::quic::quick_config::{QuicClientConfig, QuicClientReconnectionConfig};
 use crate::tcp::tcp_client::TcpClient;
 use iggy_binary_protocol::Client;
 use iggy_common::{AutoLogin, Credentials};
