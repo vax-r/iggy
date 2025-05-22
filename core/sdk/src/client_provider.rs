@@ -19,10 +19,9 @@
 #[allow(deprecated)]
 use crate::clients::client::IggyClient;
 use crate::http::http_client::HttpClient;
-use crate::http::http_config::HttpClientConfig;
 use crate::prelude::{
-    ClientError, IggyDuration, QuicClientConfig, QuicClientReconnectionConfig, TcpClientConfig,
-    TcpClientReconnectionConfig,
+    ClientError, HttpClientConfig, IggyDuration, QuicClientConfig, QuicClientReconnectionConfig,
+    TcpClientConfig, TcpClientReconnectionConfig,
 };
 use crate::quic::quick_client::QuicClient;
 use crate::tcp::tcp_client::TcpClient;

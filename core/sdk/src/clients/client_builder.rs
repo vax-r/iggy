@@ -18,10 +18,9 @@
 
 use crate::clients::client::IggyClient;
 use crate::http::http_client::HttpClient;
-use crate::http::http_config::HttpClientConfigBuilder;
 use crate::prelude::{
-    AutoLogin, Client, EncryptorKind, IggyDuration, IggyError, Partitioner,
-    QuicClientConfigBuilder, TcpClientConfigBuilder,
+    AutoLogin, Client, EncryptorKind, HttpClientConfigBuilder, IggyDuration, IggyError,
+    Partitioner, QuicClientConfigBuilder, TcpClientConfigBuilder,
 };
 use crate::quic::quick_client::QuicClient;
 use crate::tcp::tcp_client::TcpClient;

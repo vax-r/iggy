@@ -16,11 +16,8 @@
  * under the License.
  */
 
-use crate::http::http_config::HttpClientConfig;
 use crate::http::http_transport::HttpTransport;
-use crate::prelude::Client;
-use crate::prelude::IggyDuration;
-use crate::prelude::IggyError;
+use crate::prelude::{Client, HttpClientConfig, IggyDuration, IggyError};
 use async_broadcast::{Receiver, Sender, broadcast};
 use async_trait::async_trait;
 use iggy_common::DiagnosticEvent;
