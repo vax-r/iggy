@@ -18,8 +18,10 @@
 
 use crate::{AutoLogin, ConnectionStringOptions, Credentials, IggyError};
 use std::str::FromStr;
+use strum::{Display, EnumString, IntoStaticStr};
 
-const CONNECTION_STRING_PREFIX: &str = "iggy://";
+const DEFAULT_CONNECTION_STRING_PREFIX: &str = "iggy://";
+const CONNECTION_STRING_PREFIX: &str = "iggy+";
 
 #[derive(Debug)]
 pub struct ConnectionString<T: ConnectionStringOptions + Default> {
@@ -42,15 +44,7 @@ impl<T: ConnectionStringOptions + Default> ConnectionString<T> {
     }
 
     pub fn new(connection_string: &str) -> Result<Self, IggyError> {
-        if connection_string.is_empty() {
-            return Err(IggyError::InvalidConnectionString);
-        }
-
-        if !connection_string.starts_with(CONNECTION_STRING_PREFIX) {
-            return Err(IggyError::InvalidConnectionString);
-        }
-
-        let connection_string = connection_string.replace(CONNECTION_STRING_PREFIX, "");
+        let connection_string = connection_string.split("://").collect::<Vec<&str>>()[1];
         let parts = connection_string.split('@').collect::<Vec<&str>>();
 
         if parts.len() != 2 {
@@ -113,5 +107,46 @@ impl<T: ConnectionStringOptions + Default> FromStr for ConnectionString<T> {
     type Err = IggyError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         ConnectionString::<T>::new(s)
+    }
+}
+
+/// ConnectionStringUtils is a utility struct for connection strings.
+pub struct ConnectionStringUtils;
+
+#[derive(Clone, Copy, Debug, Default, Display, PartialEq, EnumString, IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
+pub enum TransportProtocol {
+    #[default]
+    #[strum(to_string = "tcp")]
+    Tcp,
+    #[strum(to_string = "quic")]
+    Quic,
+    #[strum(to_string = "http")]
+    Http,
+}
+
+impl TransportProtocol {
+    pub fn as_str(&self) -> &'static str {
+        self.into()
+    }
+}
+
+impl ConnectionStringUtils {
+    pub fn parse_protocol(connection_string: &str) -> Result<TransportProtocol, IggyError> {
+        if connection_string.is_empty() {
+            return Err(IggyError::InvalidConnectionString);
+        }
+
+        if connection_string.starts_with(DEFAULT_CONNECTION_STRING_PREFIX) {
+            return Ok(TransportProtocol::Tcp);
+        }
+
+        if !connection_string.starts_with(CONNECTION_STRING_PREFIX) {
+            return Err(IggyError::InvalidConnectionString);
+        }
+
+        let connection_string = connection_string.replace(CONNECTION_STRING_PREFIX, "");
+        TransportProtocol::from_str(connection_string.split("://").collect::<Vec<&str>>()[0])
+            .map_err(|_| IggyError::InvalidConnectionString)
     }
 }
