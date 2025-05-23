@@ -54,6 +54,7 @@ pub use types::configuration::auth_config::connection_string_options::*;
 pub use types::configuration::auth_config::credentials::*;
 pub use types::configuration::http_config::http_client_config::*;
 pub use types::configuration::http_config::http_client_config_builder::*;
+pub use types::configuration::http_config::http_connection_string_options::*;
 pub use types::configuration::quick_config::quic_client_config::*;
 pub use types::configuration::quick_config::quic_client_config_builder::*;
 pub use types::configuration::quick_config::quic_client_reconnection_config::*;
