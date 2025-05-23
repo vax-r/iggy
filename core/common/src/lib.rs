@@ -57,6 +57,7 @@ pub use types::configuration::http_config::http_client_config_builder::*;
 pub use types::configuration::quick_config::quic_client_config::*;
 pub use types::configuration::quick_config::quic_client_config_builder::*;
 pub use types::configuration::quick_config::quic_client_reconnection_config::*;
+pub use types::configuration::quick_config::quic_connection_string_options::*;
 pub use types::configuration::tcp_config::tcp_client_config::*;
 pub use types::configuration::tcp_config::tcp_client_config_builder::*;
 pub use types::configuration::tcp_config::tcp_client_reconnection_config::*;
