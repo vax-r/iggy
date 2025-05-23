@@ -16,6 +16,8 @@
  * under the License.
  */
 
+use crate::{ConnectionString, ConnectionStringOptions, HttpConnectionStringOptions};
+
 /// Configuration for the HTTP client.
 #[derive(Debug, Clone)]
 pub struct HttpClientConfig {
@@ -30,6 +32,15 @@ impl Default for HttpClientConfig {
         HttpClientConfig {
             api_url: "http://127.0.0.1:3000".to_string(),
             retries: 3,
+        }
+    }
+}
+
+impl From<ConnectionString<HttpConnectionStringOptions>> for HttpClientConfig {
+    fn from(connection_string: ConnectionString<HttpConnectionStringOptions>) -> Self {
+        HttpClientConfig {
+            api_url: format!("http://{}", connection_string.server_address()),
+            retries: connection_string.options().retries().unwrap(),
         }
     }
 }

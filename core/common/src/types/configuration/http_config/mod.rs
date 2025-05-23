@@ -17,3 +17,4 @@
 
 pub(crate) mod http_client_config;
 pub(crate) mod http_client_config_builder;
+pub(crate) mod http_connection_string_options;
