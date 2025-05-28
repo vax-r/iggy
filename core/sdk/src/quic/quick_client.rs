@@ -548,3 +548,248 @@ fn configure(config: &QuicClientConfig) -> Result<ClientConfig, IggyError> {
     client_config.transport_config(Arc::new(transport));
     Ok(client_config)
 }
+
+/// Unit tests for QuicClient.
+/// Currently only tests for "from_connection_string()" are implemented.
+/// TODO: Add complete unit tests for QuicClient.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn should_fail_with_empty_connection_string() {
+        let value = "";
+        let quic_client = QuicClient::from_connection_string(value);
+        assert!(quic_client.is_err());
+    }
+
+    #[tokio::test]
+    async fn should_fail_without_username() {
+        let connection_string_prefix = "iggy+";
+        let protocol = TransportProtocol::Quic;
+        let server_address = "127.0.0.1";
+        let port = "1234";
+        let username = "";
+        let password = "secret";
+        let value = format!(
+            "{connection_string_prefix}{protocol}://{username}:{password}@{server_address}:{port}"
+        );
+        let quic_client = QuicClient::from_connection_string(&value);
+        assert!(quic_client.is_err());
+    }
+
+    #[tokio::test]
+    async fn should_fail_without_password() {
+        let connection_string_prefix = "iggy+";
+        let protocol = TransportProtocol::Quic;
+        let server_address = "127.0.0.1";
+        let port = "1234";
+        let username = "user";
+        let password = "";
+        let value = format!(
+            "{connection_string_prefix}{protocol}://{username}:{password}@{server_address}:{port}"
+        );
+        let quic_client = QuicClient::from_connection_string(&value);
+        assert!(quic_client.is_err());
+    }
+
+    #[tokio::test]
+    async fn should_fail_without_server_address() {
+        let connection_string_prefix = "iggy+";
+        let protocol = TransportProtocol::Quic;
+        let server_address = "";
+        let port = "1234";
+        let username = "user";
+        let password = "secret";
+        let value = format!(
+            "{connection_string_prefix}{protocol}://{username}:{password}@{server_address}:{port}"
+        );
+        let quic_client = QuicClient::from_connection_string(&value);
+        assert!(quic_client.is_err());
+    }
+
+    #[tokio::test]
+    async fn should_fail_without_port() {
+        let connection_string_prefix = "iggy+";
+        let protocol = TransportProtocol::Quic;
+        let server_address = "127.0.0.1";
+        let port = "";
+        let username = "user";
+        let password = "secret";
+        let value = format!(
+            "{connection_string_prefix}{protocol}://{username}:{password}@{server_address}:{port}"
+        );
+        let quic_client = QuicClient::from_connection_string(&value);
+        assert!(quic_client.is_err());
+    }
+
+    #[tokio::test]
+    async fn should_fail_with_invalid_prefix() {
+        let connection_string_prefix = "invalid+";
+        let protocol = TransportProtocol::Quic;
+        let server_address = "127.0.0.1";
+        let port = "1234";
+        let username = "user";
+        let password = "secret";
+        let value = format!(
+            "{connection_string_prefix}{protocol}://{username}:{password}@{server_address}:{port}"
+        );
+        let quic_client = QuicClient::from_connection_string(&value);
+        assert!(quic_client.is_err());
+    }
+
+    #[tokio::test]
+    async fn should_fail_with_unmatch_protocol() {
+        let connection_string_prefix = "iggy+";
+        let protocol = TransportProtocol::Tcp;
+        let server_address = "127.0.0.1";
+        let port = "1234";
+        let username = "user";
+        let password = "secret";
+        let value = format!(
+            "{connection_string_prefix}{protocol}://{username}:{password}@{server_address}:{port}"
+        );
+        let quic_client = QuicClient::from_connection_string(&value);
+        assert!(quic_client.is_err());
+    }
+
+    #[tokio::test]
+    async fn should_fail_with_default_prefix() {
+        let default_connection_string_prefix = "iggy://";
+        let server_address = "127.0.0.1";
+        let port = "1234";
+        let username = "user";
+        let password = "secret";
+        let value = format!(
+            "{default_connection_string_prefix}{username}:{password}@{server_address}:{port}"
+        );
+        let quic_client = QuicClient::from_connection_string(&value);
+        assert!(quic_client.is_err());
+    }
+
+    #[tokio::test]
+    async fn should_fail_with_invalid_options() {
+        let connection_string_prefix = "iggy+";
+        let protocol = TransportProtocol::Quic;
+        let server_address = "127.0.0.1";
+        let port = "";
+        let username = "user";
+        let password = "secret";
+        let value = format!(
+            "{connection_string_prefix}{protocol}://{username}:{password}@{server_address}:{port}?invalid_option=invalid"
+        );
+        let quic_client = QuicClient::from_connection_string(&value);
+        assert!(quic_client.is_err());
+    }
+
+    #[tokio::test]
+    async fn should_succeed_without_options() {
+        let connection_string_prefix = "iggy+";
+        let protocol = TransportProtocol::Quic;
+        let server_address = "127.0.0.1";
+        let port = "1234";
+        let username = "user";
+        let password = "secret";
+        let value = format!(
+            "{connection_string_prefix}{protocol}://{username}:{password}@{server_address}:{port}"
+        );
+        let quic_client = QuicClient::from_connection_string(&value);
+        assert!(quic_client.is_ok());
+
+        let quic_client_config = quic_client.unwrap().config;
+        assert_eq!(
+            quic_client_config.server_address,
+            format!("{server_address}:{port}")
+        );
+        assert_eq!(
+            quic_client_config.auto_login,
+            AutoLogin::Enabled(Credentials::UsernamePassword(
+                username.to_string(),
+                password.to_string()
+            ))
+        );
+
+        assert_eq!(quic_client_config.response_buffer_size, 10_000_000);
+        assert_eq!(quic_client_config.max_concurrent_bidi_streams, 10_000);
+        assert_eq!(quic_client_config.datagram_send_buffer_size, 100_000);
+        assert_eq!(quic_client_config.initial_mtu, 1200);
+        assert_eq!(quic_client_config.send_window, 100_000);
+        assert_eq!(quic_client_config.receive_window, 100_000);
+        assert_eq!(quic_client_config.keep_alive_interval, 5000);
+        assert_eq!(quic_client_config.max_idle_timeout, 10_000);
+        assert!(!quic_client_config.validate_certificate);
+        assert_eq!(
+            quic_client_config.heartbeat_interval,
+            IggyDuration::from_str("5s").unwrap()
+        );
+
+        assert!(quic_client_config.reconnection.enabled);
+        assert!(quic_client_config.reconnection.max_retries.is_none());
+        assert_eq!(
+            quic_client_config.reconnection.interval,
+            IggyDuration::from_str("1s").unwrap()
+        );
+        assert_eq!(
+            quic_client_config.reconnection.reestablish_after,
+            IggyDuration::from_str("5s").unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn should_succeed_with_options() {
+        let connection_string_prefix = "iggy+";
+        let protocol = TransportProtocol::Quic;
+        let server_address = "127.0.0.1";
+        let port = "1234";
+        let username = "user";
+        let password = "secret";
+        let initial_mtu = "3000";
+        let reconnection_interval = "5s";
+        let value = format!(
+            "{connection_string_prefix}{protocol}://{username}:{password}@{server_address}:{port}?initial_mtu={initial_mtu}&reconnection_interval={reconnection_interval}"
+        );
+        let quic_client = QuicClient::from_connection_string(&value);
+        assert!(quic_client.is_ok());
+
+        let quic_client_config = quic_client.unwrap().config;
+        assert_eq!(
+            quic_client_config.server_address,
+            format!("{server_address}:{port}")
+        );
+        assert_eq!(
+            quic_client_config.auto_login,
+            AutoLogin::Enabled(Credentials::UsernamePassword(
+                username.to_string(),
+                password.to_string()
+            ))
+        );
+
+        assert_eq!(quic_client_config.response_buffer_size, 10_000_000);
+        assert_eq!(quic_client_config.max_concurrent_bidi_streams, 10_000);
+        assert_eq!(quic_client_config.datagram_send_buffer_size, 100_000);
+        assert_eq!(
+            quic_client_config.initial_mtu,
+            initial_mtu.parse::<u16>().unwrap()
+        );
+        assert_eq!(quic_client_config.send_window, 100_000);
+        assert_eq!(quic_client_config.receive_window, 100_000);
+        assert_eq!(quic_client_config.keep_alive_interval, 5000);
+        assert_eq!(quic_client_config.max_idle_timeout, 10_000);
+        assert!(!quic_client_config.validate_certificate);
+        assert_eq!(
+            quic_client_config.heartbeat_interval,
+            IggyDuration::from_str("5s").unwrap()
+        );
+
+        assert!(quic_client_config.reconnection.enabled);
+        assert!(quic_client_config.reconnection.max_retries.is_none());
+        assert_eq!(
+            quic_client_config.reconnection.interval,
+            IggyDuration::from_str(reconnection_interval).unwrap()
+        );
+        assert_eq!(
+            quic_client_config.reconnection.reestablish_after,
+            IggyDuration::from_str("5s").unwrap()
+        );
+    }
+}

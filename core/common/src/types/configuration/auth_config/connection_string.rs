@@ -150,3 +150,144 @@ impl ConnectionStringUtils {
             .map_err(|_| IggyError::InvalidConnectionString)
     }
 }
+
+/// Unit tests for ConnectionString and ConnectionStringUtils,
+/// common behavior which isn't type-specific will use TcpConnectionStringOptions
+/// as default.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::IggyDuration;
+    use crate::TcpConnectionStringOptions;
+
+    #[test]
+    fn should_fail_without_username() {
+        let server_address = "127.0.0.1";
+        let port = "1234";
+        let username = "";
+        let password = "secret";
+        let value = format!(
+            "{DEFAULT_CONNECTION_STRING_PREFIX}{username}:{password}@{server_address}:{port}"
+        );
+        let connection_string = ConnectionString::<TcpConnectionStringOptions>::new(&value);
+        assert!(connection_string.is_err());
+    }
+
+    #[test]
+    fn should_fail_without_password() {
+        let server_address = "127.0.0.1";
+        let port = "1234";
+        let username = "user";
+        let password = "";
+        let value = format!(
+            "{DEFAULT_CONNECTION_STRING_PREFIX}{username}:{password}@{server_address}:{port}"
+        );
+        let connection_string = ConnectionString::<TcpConnectionStringOptions>::new(&value);
+        assert!(connection_string.is_err());
+    }
+
+    #[test]
+    fn should_fail_without_server_address() {
+        let server_address = "";
+        let port = "1234";
+        let username = "user";
+        let password = "secret";
+        let value = format!(
+            "{DEFAULT_CONNECTION_STRING_PREFIX}{username}:{password}@{server_address}:{port}"
+        );
+        let connection_string = ConnectionString::<TcpConnectionStringOptions>::new(&value);
+        assert!(connection_string.is_err());
+    }
+
+    #[test]
+    fn should_fail_without_port() {
+        let server_address = "127.0.0.1";
+        let port = "";
+        let username = "user";
+        let password = "secret";
+        let value = format!(
+            "{DEFAULT_CONNECTION_STRING_PREFIX}{username}:{password}@{server_address}:{port}"
+        );
+        let connection_string = ConnectionString::<TcpConnectionStringOptions>::new(&value);
+        assert!(connection_string.is_err());
+    }
+
+    #[test]
+    fn should_fail_with_invalid_options() {
+        let server_address = "127.0.0.1";
+        let port = "1234";
+        let username = "user";
+        let password = "secret";
+        let value = format!(
+            "{DEFAULT_CONNECTION_STRING_PREFIX}{username}:{password}@{server_address}:{port}?invalid_option=invalid"
+        );
+        let connection_string = ConnectionString::<TcpConnectionStringOptions>::new(&value);
+        assert!(connection_string.is_err());
+    }
+
+    #[test]
+    fn should_succeed_without_options() {
+        let server_address = "127.0.0.1";
+        let port = "1234";
+        let username = "user";
+        let password = "secret";
+        let value = format!(
+            "{DEFAULT_CONNECTION_STRING_PREFIX}{username}:{password}@{server_address}:{port}"
+        );
+        let connection_string = ConnectionString::<TcpConnectionStringOptions>::new(&value);
+        assert!(connection_string.is_ok());
+
+        let connection_string = connection_string.unwrap();
+        assert_eq!(
+            connection_string.server_address,
+            format!("{server_address}:{port}")
+        );
+        assert_eq!(
+            connection_string.auto_login,
+            AutoLogin::Enabled(Credentials::UsernamePassword(
+                username.to_string(),
+                password.to_string()
+            ))
+        );
+
+        assert!(connection_string.options.retries().is_none());
+        assert_eq!(
+            connection_string.options.heartbeat_interval(),
+            IggyDuration::from_str("5s").unwrap()
+        );
+    }
+
+    #[test]
+    fn should_succeed_with_options() {
+        let server_address = "127.0.0.1";
+        let port = "1234";
+        let username = "user";
+        let password = "secret";
+        let retries = "3";
+        let heartbeat_interval = "10s";
+        let value = format!(
+            "{DEFAULT_CONNECTION_STRING_PREFIX}{username}:{password}@{server_address}:{port}?reconnection_retries={retries}&heartbeat_interval={heartbeat_interval}"
+        );
+        let connection_string = ConnectionString::<TcpConnectionStringOptions>::new(&value);
+        assert!(connection_string.is_ok());
+
+        let connection_string = connection_string.unwrap();
+        assert_eq!(
+            connection_string.server_address,
+            format!("{server_address}:{port}")
+        );
+        assert_eq!(
+            connection_string.auto_login,
+            AutoLogin::Enabled(Credentials::UsernamePassword(
+                username.to_string(),
+                password.to_string()
+            ))
+        );
+
+        assert_eq!(connection_string.options.retries().unwrap(), 3);
+        assert_eq!(
+            connection_string.options.heartbeat_interval(),
+            IggyDuration::from_str("10s").unwrap()
+        );
+    }
+}
