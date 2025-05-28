@@ -513,4 +513,25 @@ mod tests {
             format!("{protocol}://{server_address}:{port}/")
         );
     }
+
+    #[test]
+    fn should_succeed_with_pat() {
+        let connection_string_prefix = "iggy+";
+        let protocol = TransportProtocol::Http;
+        let server_address = "127.0.0.1";
+        let port = "1234";
+        let pat = "iggypat-1234567890abcdef";
+        let value = format!("{connection_string_prefix}{protocol}://{pat}@{server_address}:{port}");
+        let http_client = HttpClient::from_connection_string(&value);
+        assert!(http_client.is_ok());
+
+        assert_eq!(
+            http_client.as_ref().unwrap().api_url.to_string(),
+            format!("{protocol}://{server_address}:{port}/")
+        );
+        assert_eq!(
+            http_client.as_ref().unwrap().heartbeat_interval,
+            IggyDuration::from_str("5s").unwrap()
+        );
+    }
 }

@@ -763,4 +763,45 @@ mod tests {
             IggyDuration::from_str("5s").unwrap()
         );
     }
+
+    #[test]
+    fn should_succeed_with_pat() {
+        let connection_string_prefix = "iggy+";
+        let protocol = TransportProtocol::Tcp;
+        let server_address = "127.0.0.1";
+        let port = "1234";
+        let pat = "iggypat-1234567890abcdef";
+        let value = format!("{connection_string_prefix}{protocol}://{pat}@{server_address}:{port}");
+        let tcp_client = TcpClient::from_connection_string(&value);
+        assert!(tcp_client.is_ok());
+
+        let tcp_client_config = tcp_client.unwrap().config;
+        assert_eq!(
+            tcp_client_config.server_address,
+            format!("{server_address}:{port}")
+        );
+        assert_eq!(
+            tcp_client_config.auto_login,
+            AutoLogin::Enabled(Credentials::PersonalAccessToken(pat.to_string()))
+        );
+
+        assert!(!tcp_client_config.tls_enabled);
+        assert!(tcp_client_config.tls_domain.is_empty());
+        assert!(tcp_client_config.tls_ca_file.is_none());
+        assert_eq!(
+            tcp_client_config.heartbeat_interval,
+            IggyDuration::from_str("5s").unwrap()
+        );
+
+        assert!(tcp_client_config.reconnection.enabled);
+        assert!(tcp_client_config.reconnection.max_retries.is_none());
+        assert_eq!(
+            tcp_client_config.reconnection.interval,
+            IggyDuration::from_str("1s").unwrap()
+        );
+        assert_eq!(
+            tcp_client_config.reconnection.reestablish_after,
+            IggyDuration::from_str("5s").unwrap()
+        );
+    }
 }

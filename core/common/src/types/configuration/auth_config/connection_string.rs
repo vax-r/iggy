@@ -306,4 +306,30 @@ mod tests {
             IggyDuration::from_str("10s").unwrap()
         );
     }
+
+    #[test]
+    fn should_succeed_with_pat() {
+        let server_address = "127.0.0.1";
+        let port = "1234";
+        let pat = "iggypat-1234567890abcdef";
+        let value = format!("{DEFAULT_CONNECTION_STRING_PREFIX}{pat}@{server_address}:{port}");
+        let connection_string = ConnectionString::<TcpConnectionStringOptions>::new(&value);
+        assert!(connection_string.is_ok());
+
+        let connection_string = connection_string.unwrap();
+        assert_eq!(
+            connection_string.server_address,
+            format!("{server_address}:{port}")
+        );
+        assert_eq!(
+            connection_string.auto_login,
+            AutoLogin::Enabled(Credentials::PersonalAccessToken(pat.to_string()))
+        );
+
+        assert!(connection_string.options.retries().is_none());
+        assert_eq!(
+            connection_string.options.heartbeat_interval(),
+            IggyDuration::from_str("5s").unwrap()
+        );
+    }
 }

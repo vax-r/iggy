@@ -792,4 +792,51 @@ mod tests {
             IggyDuration::from_str("5s").unwrap()
         );
     }
+
+    #[tokio::test]
+    async fn should_succeed_with_pat() {
+        let connection_string_prefix = "iggy+";
+        let protocol = TransportProtocol::Quic;
+        let server_address = "127.0.0.1";
+        let port = "1234";
+        let pat = "iggypat-1234567890abcdef";
+        let value = format!("{connection_string_prefix}{protocol}://{pat}@{server_address}:{port}");
+        let quic_client = QuicClient::from_connection_string(&value);
+        assert!(quic_client.is_ok());
+
+        let quic_client_config = quic_client.unwrap().config;
+        assert_eq!(
+            quic_client_config.server_address,
+            format!("{server_address}:{port}")
+        );
+        assert_eq!(
+            quic_client_config.auto_login,
+            AutoLogin::Enabled(Credentials::PersonalAccessToken(pat.to_string()))
+        );
+
+        assert_eq!(quic_client_config.response_buffer_size, 10_000_000);
+        assert_eq!(quic_client_config.max_concurrent_bidi_streams, 10_000);
+        assert_eq!(quic_client_config.datagram_send_buffer_size, 100_000);
+        assert_eq!(quic_client_config.initial_mtu, 1200);
+        assert_eq!(quic_client_config.send_window, 100_000);
+        assert_eq!(quic_client_config.receive_window, 100_000);
+        assert_eq!(quic_client_config.keep_alive_interval, 5000);
+        assert_eq!(quic_client_config.max_idle_timeout, 10_000);
+        assert!(!quic_client_config.validate_certificate);
+        assert_eq!(
+            quic_client_config.heartbeat_interval,
+            IggyDuration::from_str("5s").unwrap()
+        );
+
+        assert!(quic_client_config.reconnection.enabled);
+        assert!(quic_client_config.reconnection.max_retries.is_none());
+        assert_eq!(
+            quic_client_config.reconnection.interval,
+            IggyDuration::from_str("1s").unwrap()
+        );
+        assert_eq!(
+            quic_client_config.reconnection.reestablish_after,
+            IggyDuration::from_str("5s").unwrap()
+        );
+    }
 }
