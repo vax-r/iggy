@@ -46,19 +46,25 @@ impl<T: ConnectionStringOptions + Default> ConnectionString<T> {
     pub fn new(connection_string: &str) -> Result<Self, IggyError> {
         let connection_string = connection_string.split("://").collect::<Vec<&str>>()[1];
         let parts = connection_string.split('@').collect::<Vec<&str>>();
+        let mut username = "";
+        let mut password = "";
+        let mut pat_token = "";
 
         if parts.len() != 2 {
             return Err(IggyError::InvalidConnectionString);
         }
 
         let credentials = parts[0].split(':').collect::<Vec<&str>>();
-        if credentials.len() != 2 {
-            return Err(IggyError::InvalidConnectionString);
-        }
+        if credentials.len() == 1 {
+            pat_token = credentials[0];
+        } else if credentials.len() == 2 {
+            username = credentials[0];
+            password = credentials[1];
 
-        let username = credentials[0];
-        let password = credentials[1];
-        if username.is_empty() || password.is_empty() {
+            if username.is_empty() || password.is_empty() {
+                return Err(IggyError::InvalidConnectionString);
+            }
+        } else {
             return Err(IggyError::InvalidConnectionString);
         }
 
@@ -90,6 +96,16 @@ impl<T: ConnectionStringOptions + Default> ConnectionString<T> {
             connection_string_options = T::parse_options(options)?;
         } else {
             connection_string_options = T::default();
+        }
+
+        if credentials.len() == 1 {
+            return Ok(ConnectionString {
+                server_address: server_address.to_owned(),
+                auto_login: AutoLogin::Enabled(Credentials::PersonalAccessToken(
+                    pat_token.to_owned(),
+                )),
+                options: connection_string_options,
+            });
         }
 
         Ok(ConnectionString {
