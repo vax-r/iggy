@@ -19,15 +19,19 @@
 use crate::clients::client_builder::IggyClientBuilder;
 use iggy_common::locking::{IggySharedMut, IggySharedMutFn};
 
+use crate::http::http_client::HttpClient;
 use crate::prelude::EncryptorKind;
 use crate::prelude::IggyConsumerBuilder;
 use crate::prelude::IggyError;
 use crate::prelude::IggyProducerBuilder;
+use crate::quic::quick_client::QuicClient;
 use crate::tcp::tcp_client::TcpClient;
 use async_broadcast::Receiver;
 use async_trait::async_trait;
 use iggy_binary_protocol::Client;
-use iggy_common::{Consumer, DiagnosticEvent, Partitioner};
+use iggy_common::{
+    ConnectionStringUtils, Consumer, DiagnosticEvent, Partitioner, TransportProtocol,
+};
 use std::fmt::Debug;
 use std::sync::Arc;
 use tokio::spawn;
@@ -76,8 +80,17 @@ impl IggyClient {
     }
 
     pub fn from_connection_string(connection_string: &str) -> Result<Self, IggyError> {
-        let client = Box::new(TcpClient::from_connection_string(connection_string)?);
-        Ok(IggyClient::new(client))
+        match ConnectionStringUtils::parse_protocol(connection_string)? {
+            TransportProtocol::Tcp => Ok(IggyClient::new(Box::new(
+                TcpClient::from_connection_string(connection_string)?,
+            ))),
+            TransportProtocol::Quic => Ok(IggyClient::new(Box::new(
+                QuicClient::from_connection_string(connection_string)?,
+            ))),
+            TransportProtocol::Http => Ok(IggyClient::new(Box::new(
+                HttpClient::from_connection_string(connection_string)?,
+            ))),
+        }
     }
 
     /// Creates a new `IggyClient` with the provided client implementation for the specific transport and the optional implementations for the `partitioner` and `encryptor`.
