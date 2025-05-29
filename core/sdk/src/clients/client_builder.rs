@@ -24,6 +24,7 @@ use crate::prelude::{
 };
 use crate::quic::quick_client::QuicClient;
 use crate::tcp::tcp_client::TcpClient;
+use iggy_common::{ConnectionStringUtils, TransportProtocol};
 use std::sync::Arc;
 use tracing::error;
 
@@ -44,9 +45,25 @@ impl IggyClientBuilder {
 
     pub fn from_connection_string(connection_string: &str) -> Result<Self, IggyError> {
         let mut builder = Self::new();
-        builder.client = Some(Box::new(TcpClient::from_connection_string(
-            connection_string,
-        )?));
+
+        match ConnectionStringUtils::parse_protocol(connection_string)? {
+            TransportProtocol::Tcp => {
+                builder.client = Some(Box::new(TcpClient::from_connection_string(
+                    connection_string,
+                )?));
+            }
+            TransportProtocol::Quic => {
+                builder.client = Some(Box::new(QuicClient::from_connection_string(
+                    connection_string,
+                )?));
+            }
+            TransportProtocol::Http => {
+                builder.client = Some(Box::new(HttpClient::from_connection_string(
+                    connection_string,
+                )?));
+            }
+        }
+
         Ok(builder)
     }
 
