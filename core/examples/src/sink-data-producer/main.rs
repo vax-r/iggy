@@ -23,6 +23,7 @@ use iggy::prelude::{
     Client, DirectConfig, IggyClient, IggyClientBuilder, IggyDuration, IggyError, IggyMessage,
     Partitioning,
 };
+use iggy_common::FromConnectionString;
 use rand::{
     Rng,
     distr::{Alphanumeric, Uniform},

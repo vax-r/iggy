@@ -24,7 +24,7 @@ use crate::prelude::{
 };
 use crate::quic::quick_client::QuicClient;
 use crate::tcp::tcp_client::TcpClient;
-use iggy_common::{ConnectionStringUtils, TransportProtocol};
+use iggy_common::{ConnectionStringUtils, FromConnectionString, TransportProtocol};
 use std::sync::Arc;
 use tracing::error;
 
@@ -36,14 +36,9 @@ pub struct IggyClientBuilder {
     encryptor: Option<Arc<EncryptorKind>>,
 }
 
-impl IggyClientBuilder {
-    /// Creates a new `IggyClientBuilder`.
-    /// This is not enough to build the `IggyClient` instance. You need to provide the client configuration or the client implementation for the specific transport.
-    pub fn new() -> Self {
-        IggyClientBuilder::default()
-    }
-
-    pub fn from_connection_string(connection_string: &str) -> Result<Self, IggyError> {
+impl FromConnectionString for IggyClientBuilder {
+    /// Creates a new IggyClientBuilder from a connection string.
+    fn from_connection_string(connection_string: &str) -> Result<Self, IggyError> {
         let mut builder = Self::new();
 
         match ConnectionStringUtils::parse_protocol(connection_string)? {
@@ -65,6 +60,14 @@ impl IggyClientBuilder {
         }
 
         Ok(builder)
+    }
+}
+
+impl IggyClientBuilder {
+    /// Creates a new `IggyClientBuilder`.
+    /// This is not enough to build the `IggyClient` instance. You need to provide the client configuration or the client implementation for the specific transport.
+    pub fn new() -> Self {
+        IggyClientBuilder::default()
     }
 
     /// Apply the provided client implementation for the specific transport. Setting client clears the client config.

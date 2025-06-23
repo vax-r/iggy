@@ -21,6 +21,7 @@ use configs::RuntimeConfig;
 use dlopen2::wrapper::{Container, WrapperApi};
 use error::RuntimeError;
 use iggy::prelude::{Client, IggyClient, IggyClientBuilder, IggyConsumer, IggyProducer};
+use iggy_common::FromConnectionString;
 use iggy_connector_sdk::{
     StreamDecoder, StreamEncoder,
     sink::ConsumeCallback,

@@ -23,6 +23,12 @@ use strum::{Display, EnumString, IntoStaticStr};
 const DEFAULT_CONNECTION_STRING_PREFIX: &str = "iggy://";
 const CONNECTION_STRING_PREFIX: &str = "iggy+";
 
+pub trait FromConnectionString {
+    fn from_connection_string(connection_string: &str) -> Result<Self, IggyError>
+    where
+        Self: Sized;
+}
+
 #[derive(Debug)]
 pub struct ConnectionString<T: ConnectionStringOptions + Default> {
     server_address: String,

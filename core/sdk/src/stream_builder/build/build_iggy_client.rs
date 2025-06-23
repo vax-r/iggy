@@ -17,6 +17,7 @@
  */
 use crate::prelude::{IggyClient, IggyError};
 use iggy_binary_protocol::Client;
+use iggy_common::FromConnectionString;
 
 /// Builds an `IggyClient` from the given connection string.
 ///

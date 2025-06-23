@@ -20,6 +20,7 @@ use ahash::AHashMap;
 use clap::Parser;
 use futures_util::future::join_all;
 use iggy::prelude::*;
+use iggy_common::FromConnectionString;
 use iggy_examples::shared::args::Args;
 use std::collections::HashMap;
 use std::env;

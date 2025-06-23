@@ -36,6 +36,7 @@ flume = { workspace = true }
 futures = { workspace = true }
 iggy = { workspace = true }
 iggy_connector_sdk = { workspace = true }
+iggy_common = { workspace = true }
 mimalloc = { workspace = true }
 once_cell = { workspace = true }
 postcard = { workspace = true }

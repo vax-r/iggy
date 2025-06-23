@@ -30,7 +30,8 @@ use async_broadcast::Receiver;
 use async_trait::async_trait;
 use iggy_binary_protocol::Client;
 use iggy_common::{
-    ConnectionStringUtils, Consumer, DiagnosticEvent, Partitioner, TransportProtocol,
+    ConnectionStringUtils, Consumer, DiagnosticEvent, FromConnectionString, Partitioner,
+    TransportProtocol,
 };
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -56,6 +57,23 @@ impl Default for IggyClient {
     }
 }
 
+impl FromConnectionString for IggyClient {
+    /// Creates a new IggyClient from a connection string.
+    fn from_connection_string(connection_string: &str) -> Result<Self, IggyError> {
+        match ConnectionStringUtils::parse_protocol(connection_string)? {
+            TransportProtocol::Tcp => Ok(IggyClient::new(Box::new(
+                TcpClient::from_connection_string(connection_string)?,
+            ))),
+            TransportProtocol::Quic => Ok(IggyClient::new(Box::new(
+                QuicClient::from_connection_string(connection_string)?,
+            ))),
+            TransportProtocol::Http => Ok(IggyClient::new(Box::new(
+                HttpClient::from_connection_string(connection_string)?,
+            ))),
+        }
+    }
+}
+
 impl IggyClient {
     /// Creates a new `IggyClientBuilder`.
     pub fn builder() -> IggyClientBuilder {
@@ -76,20 +94,6 @@ impl IggyClient {
             client,
             partitioner: None,
             encryptor: None,
-        }
-    }
-
-    pub fn from_connection_string(connection_string: &str) -> Result<Self, IggyError> {
-        match ConnectionStringUtils::parse_protocol(connection_string)? {
-            TransportProtocol::Tcp => Ok(IggyClient::new(Box::new(
-                TcpClient::from_connection_string(connection_string)?,
-            ))),
-            TransportProtocol::Quic => Ok(IggyClient::new(Box::new(
-                QuicClient::from_connection_string(connection_string)?,
-            ))),
-            TransportProtocol::Http => Ok(IggyClient::new(Box::new(
-                HttpClient::from_connection_string(connection_string)?,
-            ))),
         }
     }
 

@@ -22,8 +22,8 @@ use async_broadcast::{Receiver, Sender, broadcast};
 use async_trait::async_trait;
 use iggy_common::locking::{IggySharedMut, IggySharedMutFn};
 use iggy_common::{
-    ConnectionString, ConnectionStringUtils, DiagnosticEvent, HttpConnectionStringOptions,
-    IdentityInfo, TransportProtocol,
+    ConnectionString, ConnectionStringUtils, DiagnosticEvent, FromConnectionString,
+    HttpConnectionStringOptions, IdentityInfo, TransportProtocol,
 };
 use reqwest::{Response, StatusCode, Url};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
@@ -80,6 +80,19 @@ unsafe impl Sync for HttpClient {}
 impl Default for HttpClient {
     fn default() -> Self {
         HttpClient::create(Arc::new(HttpClientConfig::default())).unwrap()
+    }
+}
+
+impl FromConnectionString for HttpClient {
+    /// Create a new HttpClient from a connection string.
+    fn from_connection_string(connection_string: &str) -> Result<Self, IggyError> {
+        if ConnectionStringUtils::parse_protocol(connection_string)? != TransportProtocol::Http {
+            return Err(IggyError::InvalidConnectionString);
+        }
+
+        Self::create(Arc::new(
+            ConnectionString::<HttpConnectionStringOptions>::from_str(connection_string)?.into(),
+        ))
     }
 }
 
@@ -283,17 +296,6 @@ impl HttpClient {
             access_token: IggySharedMut::new("".to_string()),
             events: broadcast(1000),
         })
-    }
-
-    /// Create a new HttpClient from a connection string.
-    pub fn from_connection_string(connection_string: &str) -> Result<Self, IggyError> {
-        if ConnectionStringUtils::parse_protocol(connection_string)? != TransportProtocol::Http {
-            return Err(IggyError::InvalidConnectionString);
-        }
-
-        Self::create(Arc::new(
-            ConnectionString::<HttpConnectionStringOptions>::from_str(connection_string)?.into(),
-        ))
     }
 
     async fn handle_response(response: Response) -> Result<Response, IggyError> {

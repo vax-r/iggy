@@ -27,8 +27,8 @@ use bytes::{BufMut, Bytes, BytesMut};
 use iggy_binary_protocol::{BinaryClient, BinaryTransport, PersonalAccessTokenClient, UserClient};
 use iggy_common::{
     AutoLogin, ClientState, Command, ConnectionString, ConnectionStringUtils, Credentials,
-    DiagnosticEvent, IggyDuration, IggyError, IggyErrorDiscriminants, IggyTimestamp,
-    TcpConnectionStringOptions, TransportProtocol,
+    DiagnosticEvent, FromConnectionString, IggyDuration, IggyError, IggyErrorDiscriminants,
+    IggyTimestamp, TcpConnectionStringOptions, TransportProtocol,
 };
 use rustls::pki_types::{CertificateDer, ServerName, pem::PemObject};
 use std::net::SocketAddr;
@@ -146,6 +146,19 @@ impl BinaryTransport for TcpClient {
 
 impl BinaryClient for TcpClient {}
 
+impl FromConnectionString for TcpClient {
+    /// Creates a new TcpClient from a connection string.
+    fn from_connection_string(connection_string: &str) -> Result<Self, IggyError> {
+        if ConnectionStringUtils::parse_protocol(connection_string)? != TransportProtocol::Tcp {
+            return Err(IggyError::InvalidConnectionString);
+        }
+
+        Self::create(Arc::new(
+            ConnectionString::<TcpConnectionStringOptions>::from_str(connection_string)?.into(),
+        ))
+    }
+}
+
 impl TcpClient {
     /// Create a new TCP client for the provided server address.
     pub fn new(
@@ -178,15 +191,15 @@ impl TcpClient {
         }))
     }
 
-    pub fn from_connection_string(connection_string: &str) -> Result<Self, IggyError> {
-        if ConnectionStringUtils::parse_protocol(connection_string)? != TransportProtocol::Tcp {
-            return Err(IggyError::InvalidConnectionString);
-        }
+    // pub fn from_connection_string(connection_string: &str) -> Result<Self, IggyError> {
+    //     if ConnectionStringUtils::parse_protocol(connection_string)? != TransportProtocol::Tcp {
+    //         return Err(IggyError::InvalidConnectionString);
+    //     }
 
-        Self::create(Arc::new(
-            ConnectionString::<TcpConnectionStringOptions>::from_str(connection_string)?.into(),
-        ))
-    }
+    //     Self::create(Arc::new(
+    //         ConnectionString::<TcpConnectionStringOptions>::from_str(connection_string)?.into(),
+    //     ))
+    // }
 
     /// Create a new TCP client based on the provided configuration.
     pub fn create(config: Arc<TcpClientConfig>) -> Result<Self, IggyError> {

@@ -28,7 +28,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use iggy_common::{
     ClientState, Command, ConnectionString, ConnectionStringUtils, Credentials, DiagnosticEvent,
-    QuicConnectionStringOptions, TransportProtocol,
+    FromConnectionString, QuicConnectionStringOptions, TransportProtocol,
 };
 use quinn::crypto::rustls::QuicClientConfig as QuinnQuicClientConfig;
 use quinn::{ClientConfig, Connection, Endpoint, IdleTimeout, RecvStream, VarInt};
@@ -141,6 +141,19 @@ impl BinaryTransport for QuicClient {
 
 impl BinaryClient for QuicClient {}
 
+impl FromConnectionString for QuicClient {
+    /// Creates a new QuicClient from a connection string.
+    fn from_connection_string(connection_string: &str) -> Result<Self, IggyError> {
+        if ConnectionStringUtils::parse_protocol(connection_string)? != TransportProtocol::Quic {
+            return Err(IggyError::InvalidConnectionString);
+        }
+
+        Self::create(Arc::new(
+            ConnectionString::<QuicConnectionStringOptions>::from_str(connection_string)?.into(),
+        ))
+    }
+}
+
 impl QuicClient {
     /// Creates a new QUIC client for the provided client and server addresses.
     pub fn new(
@@ -201,17 +214,6 @@ impl QuicClient {
             events: broadcast(1000),
             connected_at: Mutex::new(None),
         })
-    }
-
-    /// Creates a new QUIC client from a connection string.
-    pub fn from_connection_string(connection_string: &str) -> Result<Self, IggyError> {
-        if ConnectionStringUtils::parse_protocol(connection_string)? != TransportProtocol::Quic {
-            return Err(IggyError::InvalidConnectionString);
-        }
-
-        Self::create(Arc::new(
-            ConnectionString::<QuicConnectionStringOptions>::from_str(connection_string)?.into(),
-        ))
     }
 
     async fn handle_response(&self, recv: &mut RecvStream) -> Result<Bytes, IggyError> {
