@@ -29,10 +29,7 @@ use crate::tcp::tcp_client::TcpClient;
 use async_broadcast::Receiver;
 use async_trait::async_trait;
 use iggy_binary_protocol::Client;
-use iggy_common::{
-    ConnectionStringUtils, Consumer, DiagnosticEvent, FromConnectionString, Partitioner,
-    TransportProtocol,
-};
+use iggy_common::{Consumer, DiagnosticEvent, FromConnectionString, Partitioner};
 use std::fmt::Debug;
 use std::sync::Arc;
 use tokio::spawn;
@@ -45,50 +42,38 @@ use tracing::{debug, error, info};
 /// It also provides the additional builders for the standalone consumer, consumer group, and producer.
 #[derive(Debug)]
 #[allow(dead_code)]
-pub struct IggyClient {
-    pub(crate) client: IggySharedMut<Box<dyn Client>>,
+pub struct IggyClient<T: Client + Default + 'static> {
+    pub(crate) client: IggySharedMut<T>,
     partitioner: Option<Arc<dyn Partitioner>>,
     pub(crate) encryptor: Option<Arc<EncryptorKind>>,
 }
 
-impl Default for IggyClient {
+impl Default for IggyClient<TcpClient> {
     fn default() -> Self {
-        IggyClient::new(Box::<TcpClient>::default())
+        IggyClient::<TcpClient>::new(TcpClient::default())
     }
 }
 
-impl FromConnectionString for IggyClient {
-    /// Creates a new IggyClient from a connection string.
-    fn from_connection_string(connection_string: &str) -> Result<Self, IggyError> {
-        match ConnectionStringUtils::parse_protocol(connection_string)? {
-            TransportProtocol::Tcp => Ok(IggyClient::new(Box::new(
-                TcpClient::from_connection_string(connection_string)?,
-            ))),
-            TransportProtocol::Quic => Ok(IggyClient::new(Box::new(
-                QuicClient::from_connection_string(connection_string)?,
-            ))),
-            TransportProtocol::Http => Ok(IggyClient::new(Box::new(
-                HttpClient::from_connection_string(connection_string)?,
-            ))),
-        }
+impl Default for IggyClient<QuicClient> {
+    fn default() -> Self {
+        IggyClient::<QuicClient>::new(QuicClient::default())
     }
 }
 
-impl IggyClient {
-    /// Creates a new `IggyClientBuilder`.
-    pub fn builder() -> IggyClientBuilder {
-        IggyClientBuilder::new()
+impl Default for IggyClient<HttpClient> {
+    fn default() -> Self {
+        IggyClient::<HttpClient>::new(HttpClient::default())
     }
+}
 
+impl<T: Client + Default + 'static> IggyClient<T> {
     /// Creates a new `IggyClientBuilder`.
-    pub fn builder_from_connection_string(
-        connection_string: &str,
-    ) -> Result<IggyClientBuilder, IggyError> {
-        IggyClientBuilder::from_connection_string(connection_string)
+    pub fn builder() -> IggyClientBuilder<T> {
+        IggyClientBuilder::<T>::new()
     }
 
     /// Creates a new `IggyClient` with the provided client implementation for the specific transport.
-    pub fn new(client: Box<dyn Client>) -> Self {
+    pub fn new(client: T) -> Self {
         let client = IggySharedMut::new(client);
         IggyClient {
             client,
@@ -99,7 +84,7 @@ impl IggyClient {
 
     /// Creates a new `IggyClient` with the provided client implementation for the specific transport and the optional implementations for the `partitioner` and `encryptor`.
     pub fn create(
-        client: Box<dyn Client>,
+        client: T,
         partitioner: Option<Arc<dyn Partitioner>>,
         encryptor: Option<Arc<EncryptorKind>>,
     ) -> Self {
@@ -119,7 +104,7 @@ impl IggyClient {
     }
 
     /// Returns the underlying client implementation for the specific transport.
-    pub fn client(&self) -> IggySharedMut<Box<dyn Client>> {
+    pub fn client(&self) -> IggySharedMut<T> {
         self.client.clone()
     }
 
@@ -130,8 +115,8 @@ impl IggyClient {
         stream: &str,
         topic: &str,
         partition: u32,
-    ) -> Result<IggyConsumerBuilder, IggyError> {
-        Ok(IggyConsumerBuilder::new(
+    ) -> Result<IggyConsumerBuilder<T>, IggyError> {
+        Ok(IggyConsumerBuilder::<T>::new(
             self.client.clone(),
             name.to_owned(),
             Consumer::new(name.try_into()?),
@@ -149,8 +134,8 @@ impl IggyClient {
         name: &str,
         stream: &str,
         topic: &str,
-    ) -> Result<IggyConsumerBuilder, IggyError> {
-        Ok(IggyConsumerBuilder::new(
+    ) -> Result<IggyConsumerBuilder<T>, IggyError> {
+        Ok(IggyConsumerBuilder::<T>::new(
             self.client.clone(),
             name.to_owned(),
             Consumer::group(name.try_into()?),
@@ -163,8 +148,8 @@ impl IggyClient {
     }
 
     /// Returns the builder for the producer.
-    pub fn producer(&self, stream: &str, topic: &str) -> Result<IggyProducerBuilder, IggyError> {
-        Ok(IggyProducerBuilder::new(
+    pub fn producer(&self, stream: &str, topic: &str) -> Result<IggyProducerBuilder<T>, IggyError> {
+        Ok(IggyProducerBuilder::<T>::new(
             self.client.clone(),
             stream.try_into()?,
             stream.to_owned(),
@@ -176,8 +161,44 @@ impl IggyClient {
     }
 }
 
+impl<T: Client + Default + 'static + FromConnectionString> FromConnectionString for IggyClient<T> {
+    /// Creates a new IggyClient from a connection string.
+    fn from_connection_string(connection_string: &str) -> Result<Self, IggyError> {
+        Ok(IggyClient::<T>::new(T::from_connection_string(
+            connection_string,
+        )?))
+    }
+}
+
+impl IggyClient<TcpClient> {
+    /// Creates a new `IggyClientBuilder<TcpClient>`.
+    pub fn builder_from_connection_string(
+        connection_string: &str,
+    ) -> Result<IggyClientBuilder<TcpClient>, IggyError> {
+        IggyClientBuilder::<TcpClient>::from_connection_string(connection_string)
+    }
+}
+
+impl IggyClient<QuicClient> {
+    /// Creates a new `IggyClientBuilder<QuicClient>`.
+    pub fn builder_from_connection_string(
+        connection_string: &str,
+    ) -> Result<IggyClientBuilder<QuicClient>, IggyError> {
+        IggyClientBuilder::<QuicClient>::from_connection_string(connection_string)
+    }
+}
+
+impl IggyClient<HttpClient> {
+    /// Creates a new `IggyClientBuilder<HttpClient>`.
+    pub fn builder_from_connection_string(
+        connection_string: &str,
+    ) -> Result<IggyClientBuilder<HttpClient>, IggyError> {
+        IggyClientBuilder::<HttpClient>::from_connection_string(connection_string)
+    }
+}
+
 #[async_trait]
-impl Client for IggyClient {
+impl<T: Client + Default + 'static> Client for IggyClient<T> {
     async fn connect(&self) -> Result<(), IggyError> {
         let heartbeat_interval;
         {
@@ -221,6 +242,7 @@ impl Client for IggyClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use iggy_common::TransportProtocol;
 
     #[test]
     fn should_fail_with_empty_connection_string() {

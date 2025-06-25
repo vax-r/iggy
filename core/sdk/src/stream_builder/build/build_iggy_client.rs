@@ -36,8 +36,10 @@ use iggy_common::FromConnectionString;
 /// If the connection string is invalid or the client cannot be initialized,
 /// an `IggyError` will be returned.
 ///
-pub(crate) async fn build_iggy_client(connection_string: &str) -> Result<IggyClient, IggyError> {
-    let client = IggyClient::from_connection_string(connection_string)?;
+pub(crate) async fn build_iggy_client<T: Client + Default + 'static + FromConnectionString>(
+    connection_string: &str,
+) -> Result<IggyClient<T>, IggyError> {
+    let client = IggyClient::<T>::from_connection_string(connection_string)?;
     client.connect().await?;
     Ok(client)
 }

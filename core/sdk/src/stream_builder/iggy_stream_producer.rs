@@ -18,8 +18,10 @@
 
 use crate::clients::client::IggyClient;
 use crate::clients::producer::IggyProducer;
+use crate::prelude::Client;
 use crate::prelude::{IggyError, SystemClient};
 use crate::stream_builder::{IggyProducerConfig, build};
+use iggy_common::FromConnectionString;
 use tracing::trace;
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
@@ -38,10 +40,10 @@ impl IggyStreamProducer {
     ///
     /// If the client is not connected or the producer cannot be built, an `IggyError` is returned.
     ///
-    pub async fn build(
-        client: &IggyClient,
+    pub async fn build<T: Client + Default + 'static>(
+        client: &IggyClient<T>,
         config: &IggyProducerConfig,
-    ) -> Result<IggyProducer, IggyError> {
+    ) -> Result<IggyProducer<T>, IggyError> {
         trace!("Check if client is connected");
         if client.ping().await.is_err() {
             return Err(IggyError::NotConnected);
@@ -66,10 +68,10 @@ impl IggyStreamProducer {
     ///
     /// If the client cannot be connected or the producer cannot be built, an `IggyError` is returned.
     ///
-    pub async fn with_client_from_url(
+    pub async fn with_client_from_url<T: Client + Default + 'static + FromConnectionString>(
         connection_string: &str,
         config: &IggyProducerConfig,
-    ) -> Result<(IggyClient, IggyProducer), IggyError> {
+    ) -> Result<(IggyClient<T>, IggyProducer<T>), IggyError> {
         trace!("Build and connect iggy client");
         let client = build::build_iggy_client::build_iggy_client(connection_string).await?;
 
@@ -97,7 +99,9 @@ impl IggyStreamProducer {
     /// If the connection string is invalid or the client cannot be initialized,
     /// an `IggyError` will be returned.
     ///
-    pub async fn build_iggy_client(connection_string: &str) -> Result<IggyClient, IggyError> {
+    pub async fn build_iggy_client<T: Client + Default + 'static + FromConnectionString>(
+        connection_string: &str,
+    ) -> Result<IggyClient<T>, IggyError> {
         trace!("Build and connect iggy client");
         let client = build::build_iggy_client(connection_string).await?;
 

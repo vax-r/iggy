@@ -19,12 +19,13 @@
 use crate::prelude::IggyClient;
 use async_dropper::AsyncDrop;
 use async_trait::async_trait;
+use iggy_binary_protocol::Client;
 use iggy_binary_protocol::ConsumerGroupClient;
 use iggy_common::locking::IggySharedMutFn;
 use iggy_common::{ConsumerGroup, ConsumerGroupDetails, Identifier, IggyError};
 
 #[async_trait]
-impl ConsumerGroupClient for IggyClient {
+impl<T: Client + Default + 'static> ConsumerGroupClient for IggyClient<T> {
     async fn get_consumer_group(
         &self,
         stream_id: &Identifier,
@@ -105,7 +106,7 @@ impl ConsumerGroupClient for IggyClient {
 }
 
 #[async_trait]
-impl AsyncDrop for IggyClient {
+impl<T: Client + Default + 'static> AsyncDrop for IggyClient<T> {
     async fn async_drop(&mut self) {
         let _ = self.client.read().await.logout_user().await;
     }

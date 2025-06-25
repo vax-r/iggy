@@ -87,13 +87,10 @@ pub enum AutoCommitAfter {
     ConsumingEveryNthMessage(u32),
 }
 
-unsafe impl Send for IggyConsumer {}
-unsafe impl Sync for IggyConsumer {}
-
-pub struct IggyConsumer {
+pub struct IggyConsumer<T: Client + Default + 'static> {
     initialized: bool,
     can_poll: Arc<AtomicBool>,
-    client: IggySharedMut<Box<dyn Client>>,
+    client: IggySharedMut<T>,
     consumer_name: String,
     consumer: Arc<Consumer>,
     is_consumer_group: bool,
@@ -126,10 +123,13 @@ pub struct IggyConsumer {
     allow_replay: bool,
 }
 
-impl IggyConsumer {
+unsafe impl<T> Send for IggyConsumer<T> where T: Client + Default + 'static {}
+unsafe impl<T> Sync for IggyConsumer<T> where T: Client + Default + 'static {}
+
+impl<T: Client + Default + 'static> IggyConsumer<T> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
-        client: IggySharedMut<Box<dyn Client>>,
+        client: IggySharedMut<T>,
         consumer_name: String,
         consumer: Consumer,
         stream_id: Identifier,
@@ -405,7 +405,7 @@ impl IggyConsumer {
 
     #[allow(clippy::too_many_arguments)]
     async fn store_consumer_offset(
-        client: &IggySharedMut<Box<dyn Client>>,
+        client: &IggySharedMut<T>,
         consumer: &Consumer,
         stream_id: &Identifier,
         topic_id: &Identifier,
@@ -614,9 +614,10 @@ impl IggyConsumer {
         });
     }
 
+    // note this, now returned future type depends on T, be careful whether it's ok or not
     fn create_poll_messages_future(
         &self,
-    ) -> impl Future<Output = Result<PolledMessages, IggyError>> + use<> {
+    ) -> impl Future<Output = Result<PolledMessages, IggyError>> + use<T> {
         let stream_id = self.stream_id.clone();
         let topic_id = self.topic_id.clone();
         let partition_id = self.partition_id;
@@ -781,7 +782,7 @@ impl IggyConsumer {
     }
 
     async fn initialize_consumer_group(
-        client: IggySharedMut<Box<dyn Client>>,
+        client: IggySharedMut<T>,
         create_consumer_group_if_not_exists: bool,
         stream_id: Arc<Identifier>,
         topic_id: Arc<Identifier>,
@@ -872,7 +873,7 @@ impl ReceivedMessage {
     }
 }
 
-impl Stream for IggyConsumer {
+impl<T: Client + Default + 'static> Stream for IggyConsumer<T> {
     type Item = Result<ReceivedMessage, IggyError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {

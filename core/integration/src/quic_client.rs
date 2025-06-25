@@ -28,15 +28,15 @@ pub struct QuicClientFactory {
 }
 
 #[async_trait]
-impl ClientFactory for QuicClientFactory {
-    async fn create_client(&self) -> Box<dyn Client> {
+impl<T: Client + Default + 'static> ClientFactory<T> for QuicClientFactory {
+    async fn create_client(&self) -> T {
         let config = QuicClientConfig {
             server_address: self.server_addr.clone(),
             ..QuicClientConfig::default()
         };
         let client = QuicClient::create(Arc::new(config)).unwrap();
         Client::connect(&client).await.unwrap();
-        Box::new(client)
+        client
     }
 }
 

@@ -18,12 +18,13 @@
 
 use crate::prelude::IggyClient;
 use async_trait::async_trait;
+use iggy_binary_protocol::Client;
 use iggy_binary_protocol::SegmentClient;
 use iggy_common::locking::IggySharedMutFn;
 use iggy_common::{Identifier, IggyError};
 
 #[async_trait]
-impl SegmentClient for IggyClient {
+impl<T: Client + Default + 'static> SegmentClient for IggyClient<T> {
     async fn delete_segments(
         &self,
         stream_id: &Identifier,

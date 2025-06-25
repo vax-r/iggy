@@ -24,54 +24,27 @@ use crate::prelude::{
 };
 use crate::quic::quick_client::QuicClient;
 use crate::tcp::tcp_client::TcpClient;
-use iggy_common::{ConnectionStringUtils, FromConnectionString, TransportProtocol};
+use iggy_common::FromConnectionString;
 use std::sync::Arc;
 use tracing::error;
 
-/// The builder for the `IggyClient` instance, which allows to configure and provide custom implementations for the partitioner, encryptor or message handler.
 #[derive(Debug, Default)]
-pub struct IggyClientBuilder {
-    client: Option<Box<dyn Client>>,
+pub struct IggyClientBuilder<T: Client + Default + 'static> {
+    client: Option<T>,
     partitioner: Option<Arc<dyn Partitioner>>,
     encryptor: Option<Arc<EncryptorKind>>,
 }
 
-impl FromConnectionString for IggyClientBuilder {
-    /// Creates a new IggyClientBuilder from a connection string.
-    fn from_connection_string(connection_string: &str) -> Result<Self, IggyError> {
-        let mut builder = Self::new();
-
-        match ConnectionStringUtils::parse_protocol(connection_string)? {
-            TransportProtocol::Tcp => {
-                builder.client = Some(Box::new(TcpClient::from_connection_string(
-                    connection_string,
-                )?));
-            }
-            TransportProtocol::Quic => {
-                builder.client = Some(Box::new(QuicClient::from_connection_string(
-                    connection_string,
-                )?));
-            }
-            TransportProtocol::Http => {
-                builder.client = Some(Box::new(HttpClient::from_connection_string(
-                    connection_string,
-                )?));
-            }
-        }
-
-        Ok(builder)
-    }
-}
-
-impl IggyClientBuilder {
+impl<T: Client + Default + 'static> IggyClientBuilder<T> {
     /// Creates a new `IggyClientBuilder`.
     /// This is not enough to build the `IggyClient` instance. You need to provide the client configuration or the client implementation for the specific transport.
     pub fn new() -> Self {
         IggyClientBuilder::default()
     }
 
+    /// Do we still need this?
     /// Apply the provided client implementation for the specific transport. Setting client clears the client config.
-    pub fn with_client(mut self, client: Box<dyn Client>) -> Self {
+    pub fn with_client(mut self, client: T) -> Self {
         self.client = Some(client);
         self
     }
@@ -88,6 +61,38 @@ impl IggyClientBuilder {
         self
     }
 
+    /// Build the `IggyClient` instance.
+    /// This method returns an error if the client is not provided.
+    /// If the client is provided, it creates the `IggyClient` instance with the provided configuration.
+    /// To provide the client configuration, use the `with_tcp`, `with_quic` or `with_http` methods.
+    pub fn build(self) -> Result<IggyClient<T>, IggyError> {
+        let Some(client) = self.client else {
+            error!("Client is not provided");
+            return Err(IggyError::InvalidConfiguration);
+        };
+
+        Ok(IggyClient::<T>::create(
+            client,
+            self.partitioner,
+            self.encryptor,
+        ))
+    }
+}
+
+impl<T> FromConnectionString for IggyClientBuilder<T>
+where
+    T: Client + Default + 'static + FromConnectionString,
+{
+    /// Creates a new IggyClientBuilder from a connection string.
+    fn from_connection_string(connection_string: &str) -> Result<Self, IggyError> {
+        let mut builder = Self::new();
+        builder.client = Some(T::from_connection_string(connection_string)?);
+
+        Ok(builder)
+    }
+}
+
+impl IggyClientBuilder<TcpClient> {
     /// This method provides fluent API for the TCP client configuration.
     /// It returns the `TcpClientBuilder` instance, which allows to configure the TCP client with custom settings or using defaults.
     /// This should be called after the non-protocol specific methods, such as `with_partitioner`, `with_encryptor` or `with_message_handler`.
@@ -97,7 +102,9 @@ impl IggyClientBuilder {
             parent_builder: self,
         }
     }
+}
 
+impl IggyClientBuilder<QuicClient> {
     /// This method provides fluent API for the QUIC client configuration.
     /// It returns the `QuicClientBuilder` instance, which allows to configure the QUIC client with custom settings or using defaults.
     /// This should be called after the non-protocol specific methods, such as `with_partitioner`, `with_encryptor` or `with_message_handler`.
@@ -107,7 +114,9 @@ impl IggyClientBuilder {
             parent_builder: self,
         }
     }
+}
 
+impl IggyClientBuilder<HttpClient> {
     /// This method provides fluent API for the HTTP client configuration.
     /// It returns the `HttpClientBuilder` instance, which allows to configure the HTTP client with custom settings or using defaults.
     /// This should be called after the non-protocol specific methods, such as `with_partitioner`, `with_encryptor` or `with_message_handler`.
@@ -117,25 +126,12 @@ impl IggyClientBuilder {
             parent_builder: self,
         }
     }
-
-    /// Build the `IggyClient` instance.
-    /// This method returns an error if the client is not provided.
-    /// If the client is provided, it creates the `IggyClient` instance with the provided configuration.
-    /// To provide the client configuration, use the `with_tcp`, `with_quic` or `with_http` methods.
-    pub fn build(self) -> Result<IggyClient, IggyError> {
-        let Some(client) = self.client else {
-            error!("Client is not provided");
-            return Err(IggyError::InvalidConfiguration);
-        };
-
-        Ok(IggyClient::create(client, self.partitioner, self.encryptor))
-    }
 }
 
 #[derive(Debug, Default)]
 pub struct TcpClientBuilder {
     config: TcpClientConfigBuilder,
-    parent_builder: IggyClientBuilder,
+    parent_builder: IggyClientBuilder<TcpClient>,
 }
 
 impl TcpClientBuilder {
@@ -192,9 +188,9 @@ impl TcpClientBuilder {
     }
 
     /// Builds the parent `IggyClient` with TCP configuration.
-    pub fn build(self) -> Result<IggyClient, IggyError> {
+    pub fn build(self) -> Result<IggyClient<TcpClient>, IggyError> {
         let client = TcpClient::create(Arc::new(self.config.build()?))?;
-        let client = self.parent_builder.with_client(Box::new(client)).build()?;
+        let client = self.parent_builder.with_client(client).build()?;
         Ok(client)
     }
 }
@@ -202,7 +198,7 @@ impl TcpClientBuilder {
 #[derive(Debug, Default)]
 pub struct QuicClientBuilder {
     config: QuicClientConfigBuilder,
-    parent_builder: IggyClientBuilder,
+    parent_builder: IggyClientBuilder<QuicClient>,
 }
 
 impl QuicClientBuilder {
@@ -241,9 +237,9 @@ impl QuicClientBuilder {
     }
 
     /// Builds the parent `IggyClient` with QUIC configuration.
-    pub fn build(self) -> Result<IggyClient, IggyError> {
+    pub fn build(self) -> Result<IggyClient<QuicClient>, IggyError> {
         let client = QuicClient::create(Arc::new(self.config.build()))?;
-        let client = self.parent_builder.with_client(Box::new(client)).build()?;
+        let client = self.parent_builder.with_client(client).build()?;
         Ok(client)
     }
 }
@@ -251,7 +247,7 @@ impl QuicClientBuilder {
 #[derive(Debug, Default)]
 pub struct HttpClientBuilder {
     config: HttpClientConfigBuilder,
-    parent_builder: IggyClientBuilder,
+    parent_builder: IggyClientBuilder<HttpClient>,
 }
 
 impl HttpClientBuilder {
@@ -268,9 +264,9 @@ impl HttpClientBuilder {
     }
 
     /// Builds the parent `IggyClient` with HTTP configuration.
-    pub fn build(self) -> Result<IggyClient, IggyError> {
+    pub fn build(self) -> Result<IggyClient<HttpClient>, IggyError> {
         let client = HttpClient::create(Arc::new(self.config.build()))?;
-        let client = self.parent_builder.with_client(Box::new(client)).build()?;
+        let client = self.parent_builder.with_client(client).build()?;
         Ok(client)
     }
 }
@@ -278,6 +274,7 @@ impl HttpClientBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use iggy_common::TransportProtocol;
 
     #[test]
     fn should_fail_with_empty_connection_string() {

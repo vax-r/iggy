@@ -18,6 +18,7 @@
 
 use crate::prelude::IggyClient;
 use async_trait::async_trait;
+use iggy_binary_protocol::Client;
 use iggy_binary_protocol::UserClient;
 use iggy_common::locking::IggySharedMutFn;
 use iggy_common::{
@@ -25,7 +26,7 @@ use iggy_common::{
 };
 
 #[async_trait]
-impl UserClient for IggyClient {
+impl<T: Client + Default + 'static> UserClient for IggyClient<T> {
     async fn get_user(&self, user_id: &Identifier) -> Result<Option<UserInfoDetails>, IggyError> {
         self.client.read().await.get_user(user_id).await
     }

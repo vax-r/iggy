@@ -19,6 +19,7 @@
 use crate::clients::client::IggyClient;
 use crate::clients::producer::IggyProducer;
 use crate::clients::producer_config::DirectConfig;
+use crate::prelude::Client;
 use crate::prelude::{IggyError, IggyExpiry, MaxTopicSize};
 use crate::stream_builder::IggyProducerConfig;
 use tracing::{error, trace};
@@ -39,10 +40,10 @@ use tracing::{error, trace};
 /// This function will create a new `IggyProducer` with the given `IggyClient` and `IggyProducerConfig`.
 /// The `IggyProducerConfig` fields are used to configure the `IggyProducer`.
 ///
-pub(crate) async fn build_iggy_producer(
-    client: &IggyClient,
+pub(crate) async fn build_iggy_producer<T: Client + Default + 'static>(
+    client: &IggyClient<T>,
     config: &IggyProducerConfig,
-) -> Result<IggyProducer, IggyError> {
+) -> Result<IggyProducer<T>, IggyError> {
     trace!("Extract config fields.");
     let stream = config.stream_name();
     let topic = config.topic_name();

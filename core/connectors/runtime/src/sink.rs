@@ -39,9 +39,9 @@ use crate::{
     SinkConnectorWrapper, configs::SinkConfig, resolve_plugin_path, transform,
 };
 
-pub async fn init(
+pub async fn init<T: Client + Default + 'static>(
     sink_configs: HashMap<String, SinkConfig>,
-    iggy_client: &IggyClient,
+    iggy_client: &IggyClient<T>,
 ) -> Result<HashMap<String, SinkConnector>, RuntimeError> {
     let mut sink_connectors: HashMap<String, SinkConnector> = HashMap::new();
     for (key, config) in sink_configs {
@@ -174,13 +174,13 @@ pub fn consume(sinks: Vec<SinkConnectorWrapper>) {
     }
 }
 
-async fn consume_messages(
+async fn consume_messages<T: Client + Default + 'static>(
     plugin_id: u32,
     decoder: Arc<dyn StreamDecoder>,
     batch_size: u32,
     consume: ConsumeCallback,
     transforms: Vec<Arc<dyn Transform>>,
-    mut consumer: IggyConsumer,
+    mut consumer: IggyConsumer<T>,
 ) -> Result<(), RuntimeError> {
     info!("Started consuming messages for sink connector with ID: {plugin_id}");
     let batch_size = batch_size as usize;

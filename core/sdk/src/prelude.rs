@@ -39,6 +39,8 @@ pub use crate::clients::producer::IggyProducer;
 pub use crate::clients::producer_builder::IggyProducerBuilder;
 pub use crate::clients::producer_config::{BackgroundConfig, DirectConfig};
 pub use crate::consumer_ext::IggyConsumerMessageExt;
+pub use crate::http::http_client::HttpClient;
+pub use crate::quic::quick_client::QuicClient;
 pub use crate::stream_builder::IggyConsumerConfig;
 pub use crate::stream_builder::IggyStreamConsumer;
 pub use crate::stream_builder::{IggyProducerConfig, IggyStreamProducer};

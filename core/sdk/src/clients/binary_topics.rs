@@ -18,6 +18,7 @@
 
 use crate::prelude::IggyClient;
 use async_trait::async_trait;
+use iggy_binary_protocol::Client;
 use iggy_binary_protocol::TopicClient;
 use iggy_common::locking::IggySharedMutFn;
 use iggy_common::{
@@ -25,7 +26,7 @@ use iggy_common::{
 };
 
 #[async_trait]
-impl TopicClient for IggyClient {
+impl<T: Client + Default + 'static> TopicClient for IggyClient<T> {
     async fn get_topic(
         &self,
         stream_id: &Identifier,

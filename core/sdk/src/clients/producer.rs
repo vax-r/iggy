@@ -49,10 +49,10 @@ pub trait ProducerCoreBackend: Send + Sync + 'static {
     ) -> impl Future<Output = Result<(), IggyError>> + Send;
 }
 
-pub struct ProducerCore {
+pub struct ProducerCore<T: Client + Default + 'static> {
     initialized: AtomicBool,
     can_send: Arc<AtomicBool>,
-    client: Arc<IggySharedMut<Box<dyn Client>>>,
+    client: Arc<IggySharedMut<T>>,
     stream_id: Arc<Identifier>,
     stream_name: String,
     topic_id: Arc<Identifier>,
@@ -73,7 +73,7 @@ pub struct ProducerCore {
     direct_config: Option<DirectConfig>,
 }
 
-impl ProducerCore {
+impl<T: Client + Default + 'static> ProducerCore<T> {
     pub async fn init(&self) -> Result<(), IggyError> {
         if self.initialized.load(Ordering::SeqCst) {
             return Ok(());
@@ -356,7 +356,7 @@ impl ProducerCore {
     }
 }
 
-impl ProducerCoreBackend for ProducerCore {
+impl<T: Client + Default + 'static> ProducerCoreBackend for ProducerCore<T> {
     async fn send_internal(
         &self,
         stream: &Identifier,
@@ -420,18 +420,18 @@ impl ProducerCoreBackend for ProducerCore {
     }
 }
 
-unsafe impl Send for IggyProducer {}
-unsafe impl Sync for IggyProducer {}
+unsafe impl<T> Send for IggyProducer<T> where T: Client + Default + 'static {}
+unsafe impl<T> Sync for IggyProducer<T> where T: Client + Default + 'static {}
 
-pub struct IggyProducer {
-    core: Arc<ProducerCore>,
+pub struct IggyProducer<T: Client + Default + 'static> {
+    core: Arc<ProducerCore<T>>,
     dispatcher: Option<ProducerDispatcher>,
 }
 
-impl IggyProducer {
+impl<T: Client + Default + 'static> IggyProducer<T> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
-        client: IggySharedMut<Box<dyn Client>>,
+        client: IggySharedMut<T>,
         stream: Identifier,
         stream_name: String,
         topic: Identifier,
@@ -449,7 +449,7 @@ impl IggyProducer {
         send_retries_interval: Option<IggyDuration>,
         mode: SendMode,
     ) -> Self {
-        let core = Arc::new(ProducerCore {
+        let core = Arc::new(ProducerCore::<T> {
             initialized: AtomicBool::new(true),
             client: Arc::new(client),
             can_send: Arc::new(AtomicBool::new(true)),

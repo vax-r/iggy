@@ -28,8 +28,8 @@ pub struct TcpClientFactory {
 }
 
 #[async_trait]
-impl ClientFactory for TcpClientFactory {
-    async fn create_client(&self) -> Box<dyn Client> {
+impl<T: Client + Default + 'static> ClientFactory<T> for TcpClientFactory {
+    async fn create_client(&self) -> T {
         let config = TcpClientConfig {
             server_address: self.server_addr.clone(),
             nodelay: self.nodelay,
@@ -47,7 +47,7 @@ impl ClientFactory for TcpClientFactory {
                 self.server_addr, e
             )
         });
-        Box::new(client)
+        client
     }
 }
 

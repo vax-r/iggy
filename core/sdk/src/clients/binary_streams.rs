@@ -18,12 +18,13 @@
 
 use crate::prelude::IggyClient;
 use async_trait::async_trait;
+use iggy_binary_protocol::Client;
 use iggy_binary_protocol::StreamClient;
 use iggy_common::locking::IggySharedMutFn;
 use iggy_common::{Identifier, IggyError, Stream, StreamDetails};
 
 #[async_trait]
-impl StreamClient for IggyClient {
+impl<T: Client + Default + 'static> StreamClient for IggyClient<T> {
     async fn get_stream(&self, stream_id: &Identifier) -> Result<Option<StreamDetails>, IggyError> {
         self.client.read().await.get_stream(stream_id).await
     }

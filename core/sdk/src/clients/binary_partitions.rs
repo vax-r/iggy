@@ -18,12 +18,13 @@
 
 use crate::prelude::IggyClient;
 use async_trait::async_trait;
+use iggy_binary_protocol::Client;
 use iggy_binary_protocol::PartitionClient;
 use iggy_common::locking::IggySharedMutFn;
 use iggy_common::{Identifier, IggyError};
 
 #[async_trait]
-impl PartitionClient for IggyClient {
+impl<T: Client + Default + 'static> PartitionClient for IggyClient<T> {
     async fn create_partitions(
         &self,
         stream_id: &Identifier,

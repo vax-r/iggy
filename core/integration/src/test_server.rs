@@ -52,8 +52,8 @@ pub enum IpAddrKind {
 }
 
 #[async_trait]
-pub trait ClientFactory: Sync + Send {
-    async fn create_client(&self) -> Box<dyn Client>;
+pub trait ClientFactory<T: Client + Default + 'static>: Sync + Send {
+    async fn create_client(&self) -> T;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Display)]
@@ -459,7 +459,7 @@ impl Default for TestServer {
     }
 }
 
-pub async fn create_user(client: &IggyClient, username: &str) {
+pub async fn create_user<T: Client + Default + 'static>(client: &IggyClient<T>, username: &str) {
     client
         .create_user(
             username,
@@ -485,25 +485,28 @@ pub async fn create_user(client: &IggyClient, username: &str) {
         .unwrap();
 }
 
-pub async fn delete_user(client: &IggyClient, username: &str) {
+pub async fn delete_user<T: Client + Default + 'static>(client: &IggyClient<T>, username: &str) {
     client
         .delete_user(&Identifier::named(username).unwrap())
         .await
         .unwrap();
 }
 
-pub async fn login_root(client: &IggyClient) -> IdentityInfo {
+pub async fn login_root<T: Client + Default + 'static>(client: &IggyClient<T>) -> IdentityInfo {
     client
         .login_user(DEFAULT_ROOT_USERNAME, DEFAULT_ROOT_PASSWORD)
         .await
         .unwrap()
 }
 
-pub async fn login_user(client: &IggyClient, username: &str) -> IdentityInfo {
+pub async fn login_user<T: Client + Default + 'static>(
+    client: &IggyClient<T>,
+    username: &str,
+) -> IdentityInfo {
     client.login_user(username, USER_PASSWORD).await.unwrap()
 }
 
-pub async fn assert_clean_system(system_client: &IggyClient) {
+pub async fn assert_clean_system<T: Client + Default + 'static>(system_client: &IggyClient<T>) {
     let streams = system_client.get_streams().await.unwrap();
     assert!(streams.is_empty());
 

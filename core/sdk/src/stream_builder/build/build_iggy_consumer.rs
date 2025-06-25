@@ -18,6 +18,7 @@
 
 use crate::clients::client::IggyClient;
 use crate::clients::consumer::IggyConsumer;
+use crate::prelude::Client;
 use crate::prelude::{ConsumerKind, IggyError};
 use crate::stream_builder::IggyConsumerConfig;
 use tracing::{error, trace};
@@ -38,10 +39,10 @@ use tracing::{error, trace};
 /// This function will create a new `IggyConsumer` with the given `IggyClient` and `IggyConsumerConfig`.
 /// The `IggyConsumerConfig` fields are used to configure the `IggyConsumer`.
 ///
-pub(crate) async fn build_iggy_consumer(
-    client: &IggyClient,
+pub(crate) async fn build_iggy_consumer<T: Client + Default + 'static>(
+    client: &IggyClient<T>,
     config: &IggyConsumerConfig,
-) -> Result<IggyConsumer, IggyError> {
+) -> Result<IggyConsumer<T>, IggyError> {
     trace!("Extract config fields.");
     let stream = config.stream_name();
     let topic = config.topic_name();

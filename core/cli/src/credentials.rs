@@ -20,6 +20,7 @@ use crate::args::CliOptions;
 use crate::error::{CmdToolError, IggyCmdError};
 use anyhow::{Context, bail};
 use iggy::clients::client::IggyClient;
+use iggy::prelude::Client;
 use iggy::prelude::{Args, IggyError, PersonalAccessTokenClient, UserClient};
 use iggy_binary_protocol::cli::binary_system::session::ServerSession;
 use passterm::{Stream, isatty, prompt_password_stdin, prompt_password_tty};
@@ -49,13 +50,13 @@ enum Credentials {
     SessionWithToken(String, String),
 }
 
-pub(crate) struct IggyCredentials<'a> {
+pub(crate) struct IggyCredentials<'a, T: Client + Default + 'static> {
     credentials: Option<Credentials>,
-    iggy_client: Option<&'a IggyClient>,
+    iggy_client: Option<&'a IggyClient<T>>,
     login_required: bool,
 }
 
-impl<'a> IggyCredentials<'a> {
+impl<'a, T: Client + Default + 'static> IggyCredentials<'a, T> {
     pub(crate) fn new(
         cli_options: &CliOptions,
         iggy_args: &Args,
@@ -140,7 +141,7 @@ impl<'a> IggyCredentials<'a> {
         }
     }
 
-    pub(crate) fn set_iggy_client(&mut self, iggy_client: &'a IggyClient) {
+    pub(crate) fn set_iggy_client(&mut self, iggy_client: &'a IggyClient<T>) {
         self.iggy_client = Some(iggy_client);
     }
 

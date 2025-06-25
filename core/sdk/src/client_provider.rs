@@ -27,6 +27,7 @@ use crate::quic::quick_client::QuicClient;
 use crate::tcp::tcp_client::TcpClient;
 use iggy_binary_protocol::Client;
 use iggy_common::{AutoLogin, Credentials};
+use std::mem;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -160,28 +161,31 @@ impl ClientProviderConfig {
 }
 
 /// Create a default `IggyClient` with the default configuration.
-pub async fn get_default_client_() -> Result<IggyClient, ClientError> {
+pub async fn get_default_client_<T: Client + Default + 'static>()
+-> Result<IggyClient<T>, ClientError> {
     get_client(Arc::new(ClientProviderConfig::default())).await
 }
 
 /// Create a `IggyClient` for the specific transport based on the provided configuration.
-pub async fn get_client(config: Arc<ClientProviderConfig>) -> Result<IggyClient, ClientError> {
+pub async fn get_client<T: Client + Default + 'static>(
+    config: Arc<ClientProviderConfig>,
+) -> Result<IggyClient<T>, ClientError> {
     let client = get_raw_connected_client(config).await?;
-    Ok(IggyClient::builder().with_client(client).build()?)
+    Ok(IggyClient::<T>::builder().with_client(client).build()?)
 }
 
 /// Create a `Client` for the specific transport based on the provided configuration.
-pub async fn get_raw_connected_client(
+pub async fn get_raw_connected_client<T: Client + Default + 'static>(
     config: Arc<ClientProviderConfig>,
-) -> Result<Box<dyn Client>, ClientError> {
+) -> Result<T, ClientError> {
     get_raw_client(config, true).await
 }
 
 /// Create a `Client` for the specific transport based on the provided configuration.
-pub async fn get_raw_client(
+pub async fn get_raw_client<T: Client + Default + 'static>(
     config: Arc<ClientProviderConfig>,
     establish_connection: bool,
-) -> Result<Box<dyn Client>, ClientError> {
+) -> Result<T, ClientError> {
     let transport = config.transport.clone();
     match transport.as_str() {
         QUIC_TRANSPORT => {
@@ -189,21 +193,39 @@ pub async fn get_raw_client(
             let client = QuicClient::create(quic_config.clone())?;
             if establish_connection {
                 Client::connect(&client).await?
-            };
-            Ok(Box::new(client))
+            }
+
+            // SAFETY: Make sure T is actually QuicClient
+            unsafe {
+                let result = mem::transmute_copy::<QuicClient, T>(&client);
+                mem::forget(client);
+                Ok(result)
+            }
         }
         HTTP_TRANSPORT => {
             let http_config = config.http.as_ref().unwrap();
             let client = HttpClient::create(http_config.clone())?;
-            Ok(Box::new(client))
+
+            // SAFETY: Make sure T is actually HttpClient
+            unsafe {
+                let result = mem::transmute_copy::<HttpClient, T>(&client);
+                mem::forget(client);
+                Ok(result)
+            }
         }
         TCP_TRANSPORT => {
             let tcp_config = config.tcp.as_ref().unwrap();
             let client = TcpClient::create(tcp_config.clone())?;
             if establish_connection {
                 Client::connect(&client).await?
-            };
-            Ok(Box::new(client))
+            }
+
+            // SAFETY: Make sure T is actually TcpClient
+            unsafe {
+                let result = mem::transmute_copy::<TcpClient, T>(&client);
+                mem::forget(client);
+                Ok(result)
+            }
         }
         _ => Err(ClientError::InvalidTransport(transport)),
     }

@@ -330,13 +330,13 @@ async fn ensure_stream_topics_access(
     Ok(())
 }
 
-async fn create_client(
+async fn create_client<T: Client + Default + 'static>(
     address: &str,
     username: &str,
     password: &str,
-) -> Result<IggyClient, IggyError> {
+) -> Result<IggyClient<T>, IggyError> {
     let connection_string = format!("iggy://{username}:{password}@{address}");
-    let client = IggyClient::builder_from_connection_string(&connection_string)?.build()?;
+    let client = IggyClient::<T>::builder_from_connection_string(&connection_string)?.build()?;
     client.connect().await?;
     Ok(client)
 }

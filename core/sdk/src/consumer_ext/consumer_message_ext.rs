@@ -21,11 +21,12 @@ use crate::consumer_ext::{IggyConsumerMessageExt, MessageConsumer};
 use crate::prelude::IggyError;
 use async_trait::async_trait;
 use futures_util::StreamExt;
+use iggy_binary_protocol::Client;
 use tokio::sync::oneshot;
 use tracing::{error, info, trace};
 
 #[async_trait]
-impl IggyConsumerMessageExt for IggyConsumer {
+impl<T: Client + Default + 'static> IggyConsumerMessageExt for IggyConsumer<T> {
     /// Consume messages from the stream and process them with the given message consumer.
     ///
     /// # Arguments

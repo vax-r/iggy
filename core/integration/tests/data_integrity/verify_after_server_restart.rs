@@ -73,7 +73,7 @@ async fn should_fill_data_and_verify_after_restart() {
     }
     .create_client()
     .await;
-    let client = IggyClient::create(client, None, None);
+    let client = IggyClient::<TcpClient>::create(client, None, None);
     login_root(&client).await;
     let topic_id = Identifier::numeric(1).unwrap();
     for stream_id in default_bench_stream_identifiers {
@@ -106,7 +106,7 @@ async fn should_fill_data_and_verify_after_restart() {
     let server_addr = test_server.get_raw_tcp_addr().unwrap();
 
     // 8. Connect and login to newly started server
-    let client = IggyClient::create(
+    let client = IggyClient::<TcpClient>::create(
         TcpClientFactory {
             server_addr: server_addr.clone(),
             ..Default::default()

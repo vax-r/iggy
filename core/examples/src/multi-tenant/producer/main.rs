@@ -35,16 +35,16 @@ use tracing_subscriber::{EnvFilter, Registry};
 const TOPICS: &[&str] = &["events", "logs", "notifications"];
 const PASSWORD: &str = "secret";
 
-struct Tenant {
+struct Tenant<T: Client + Default + 'static> {
     id: u32,
     stream: String,
     user: String,
-    client: IggyClient,
+    client: IggyClient<T>,
     producers: Vec<TenantProducer>,
 }
 
-impl Tenant {
-    pub fn new(id: u32, stream: String, user: String, client: IggyClient) -> Self {
+impl<T: Client + Default + 'static> Tenant<T> {
+    pub fn new(id: u32, stream: String, user: String, client: IggyClient<T>) -> Self {
         Self {
             id,
             stream,
@@ -59,15 +59,15 @@ impl Tenant {
     }
 }
 
-struct TenantProducer {
+struct TenantProducer<T: Client + Default + 'static> {
     id: u32,
     stream: String,
     topic: String,
-    producer: IggyProducer,
+    producer: IggyProducer<T>,
 }
 
-impl TenantProducer {
-    pub fn new(id: u32, stream: String, topic: String, producer: IggyProducer) -> Self {
+impl<T: Client + Default + 'static> TenantProducer<T> {
+    pub fn new(id: u32, stream: String, topic: String, producer: IggyProducer<T>) -> Self {
         Self {
             id,
             stream,
@@ -249,8 +249,8 @@ fn start_producers(
     tasks
 }
 
-async fn create_producers(
-    client: &IggyClient,
+async fn create_producers<T: Client + Default + 'static>(
+    client: &IggyClient<T>,
     producers_count: u32,
     partitions_count: u32,
     stream: &str,
@@ -289,8 +289,8 @@ async fn create_producers(
     Ok(producers)
 }
 
-async fn ensure_stream_access(
-    client: &IggyClient,
+async fn ensure_stream_access<T: Client + Default + 'static>(
+    client: &IggyClient<T>,
     available_stream: &str,
     unavailable_streams: &[&str],
 ) -> Result<(), IggyError> {
@@ -313,21 +313,21 @@ async fn ensure_stream_access(
     Ok(())
 }
 
-async fn create_client(
+async fn create_client<T: Client + Default + 'static>(
     address: &str,
     username: &str,
     password: &str,
-) -> Result<IggyClient, IggyError> {
+) -> Result<IggyClient<T>, IggyError> {
     let connection_string = format!("iggy://{username}:{password}@{address}");
-    let client = IggyClientBuilder::from_connection_string(&connection_string)?.build()?;
+    let client = IggyClientBuilder::<T>::from_connection_string(&connection_string)?.build()?;
     client.connect().await?;
     Ok(client)
 }
 
-async fn create_stream_and_user(
+async fn create_stream_and_user<T: Client + Default + 'static>(
     stream_name: &str,
     username: &str,
-    client: &IggyClient,
+    client: &IggyClient<T>,
 ) -> Result<(), IggyError> {
     let stream = client.create_stream(stream_name, None).await?;
     info!("Created stream: {stream_name} with ID: {}", stream.id);

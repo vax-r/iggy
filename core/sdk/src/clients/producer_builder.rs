@@ -35,8 +35,8 @@ impl Default for SendMode {
     }
 }
 
-pub struct IggyProducerBuilder {
-    client: IggySharedMut<Box<dyn Client>>,
+pub struct IggyProducerBuilder<T: Client + Default + 'static> {
+    client: IggySharedMut<T>,
     stream: Identifier,
     stream_name: String,
     topic: Identifier,
@@ -55,10 +55,10 @@ pub struct IggyProducerBuilder {
     mode: SendMode,
 }
 
-impl IggyProducerBuilder {
+impl<T: Client + Default + 'static> IggyProducerBuilder<T> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
-        client: IggySharedMut<Box<dyn Client>>,
+        client: IggySharedMut<T>,
         stream: Identifier,
         stream_name: String,
         topic: Identifier,
@@ -213,8 +213,8 @@ impl IggyProducerBuilder {
         self
     }
 
-    pub fn build(self) -> IggyProducer {
-        IggyProducer::new(
+    pub fn build(self) -> IggyProducer<T> {
+        IggyProducer::<T>::new(
             self.client,
             self.stream,
             self.stream_name,

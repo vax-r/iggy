@@ -16,6 +16,7 @@
  * under the License.
  */
 
+use crate::prelude::Client;
 use crate::prelude::{
     CompressionAlgorithm, IdKind, Identifier, IggyClient, IggyError, IggyExpiry, MaxTopicSize,
     StreamClient, TopicClient,
@@ -40,8 +41,8 @@ use tracing::{trace, warn};
 ///
 /// * `IggyError` - If the iggy stream topic cannot be build.
 ///
-pub(crate) async fn build_iggy_stream_topic_if_not_exists(
-    client: &IggyClient,
+pub(crate) async fn build_iggy_stream_topic_if_not_exists<T: Client + Default + 'static>(
+    client: &IggyClient<T>,
     config: &IggyConsumerConfig,
 ) -> Result<(), IggyError> {
     let stream_id = config.stream_id();

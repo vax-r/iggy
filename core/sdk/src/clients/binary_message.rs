@@ -19,6 +19,7 @@
 use crate::prelude::IggyClient;
 use async_trait::async_trait;
 use bytes::Bytes;
+use iggy_binary_protocol::Client;
 use iggy_binary_protocol::MessageClient;
 use iggy_common::locking::IggySharedMutFn;
 use iggy_common::{
@@ -26,7 +27,7 @@ use iggy_common::{
 };
 
 #[async_trait]
-impl MessageClient for IggyClient {
+impl<T: Client + Default + 'static> MessageClient for IggyClient<T> {
     async fn poll_messages(
         &self,
         stream_id: &Identifier,

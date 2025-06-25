@@ -23,8 +23,8 @@ use iggy_common::{Consumer, EncryptorKind, Identifier, IggyDuration, PollingStra
 use std::sync::Arc;
 
 #[derive(Debug)]
-pub struct IggyConsumerBuilder {
-    client: IggySharedMut<Box<dyn Client>>,
+pub struct IggyConsumerBuilder<T: Client + Default + 'static> {
+    client: IggySharedMut<T>,
     consumer_name: String,
     consumer: Consumer,
     stream: Identifier,
@@ -43,10 +43,10 @@ pub struct IggyConsumerBuilder {
     allow_replay: bool,
 }
 
-impl IggyConsumerBuilder {
+impl<T: Client + Default + 'static> IggyConsumerBuilder<T> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
-        client: IggySharedMut<Box<dyn Client>>,
+        client: IggySharedMut<T>,
         consumer_name: String,
         consumer: Consumer,
         stream_id: Identifier,
@@ -219,8 +219,8 @@ impl IggyConsumerBuilder {
     /// Builds the consumer.
     ///
     /// Note: After building the consumer, `init()` must be invoked before producing messages.
-    pub fn build(self) -> IggyConsumer {
-        IggyConsumer::new(
+    pub fn build(self) -> IggyConsumer<T> {
+        IggyConsumer::<T>::new(
             self.client,
             self.consumer_name,
             self.consumer,

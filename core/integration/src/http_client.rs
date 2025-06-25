@@ -28,14 +28,14 @@ pub struct HttpClientFactory {
 }
 
 #[async_trait]
-impl ClientFactory for HttpClientFactory {
-    async fn create_client(&self) -> Box<dyn Client> {
+impl<T: Client + Default + 'static> ClientFactory<T> for HttpClientFactory {
+    async fn create_client(&self) -> T {
         let config = HttpClientConfig {
             api_url: format!("http://{}", self.server_addr.clone()),
             ..HttpClientConfig::default()
         };
         let client = HttpClient::create(Arc::new(config)).unwrap();
-        Box::new(client)
+        client
     }
 }
 

@@ -25,21 +25,25 @@ const PROD_STREAM_ID: u32 = 1;
 const TEST_STREAM_ID: u32 = 2;
 const DEV_STREAM_ID: u32 = 3;
 
-pub async fn seed(client: &IggyClient) -> Result<(), IggyError> {
+pub async fn seed<T: Client + Default + 'static>(client: &IggyClient<T>) -> Result<(), IggyError> {
     create_streams(client).await?;
     create_topics(client).await?;
     send_messages(client).await?;
     Ok(())
 }
 
-async fn create_streams(client: &IggyClient) -> Result<(), IggyError> {
+async fn create_streams<T: Client + Default + 'static>(
+    client: &IggyClient<T>,
+) -> Result<(), IggyError> {
     client.create_stream("prod", Some(PROD_STREAM_ID)).await?;
     client.create_stream("test", Some(TEST_STREAM_ID)).await?;
     client.create_stream("dev", Some(DEV_STREAM_ID)).await?;
     Ok(())
 }
 
-async fn create_topics(client: &IggyClient) -> Result<(), IggyError> {
+async fn create_topics<T: Client + Default + 'static>(
+    client: &IggyClient<T>,
+) -> Result<(), IggyError> {
     let streams = [PROD_STREAM_ID, TEST_STREAM_ID, DEV_STREAM_ID];
     for stream_id in streams {
         let stream_id = stream_id.try_into()?;
@@ -111,7 +115,9 @@ async fn create_topics(client: &IggyClient) -> Result<(), IggyError> {
     Ok(())
 }
 
-async fn send_messages(client: &IggyClient) -> Result<(), IggyError> {
+async fn send_messages<T: Client + Default + 'static>(
+    client: &IggyClient<T>,
+) -> Result<(), IggyError> {
     let mut rng = rand::rng();
     let streams = [PROD_STREAM_ID, TEST_STREAM_ID, DEV_STREAM_ID];
     let partitioning = Partitioning::balanced();

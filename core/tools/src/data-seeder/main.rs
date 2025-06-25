@@ -24,6 +24,7 @@ use iggy::client_provider;
 use iggy::client_provider::ClientProviderConfig;
 use iggy::clients::client::IggyClient;
 use iggy::prelude::{Aes256GcmEncryptor, Args, ArgsOptional, Client, EncryptorKind, UserClient};
+use iggy::prelude::{ClientError, HttpClient, QuicClient, TcpClient};
 use std::error::Error;
 use std::sync::Arc;
 use tracing::info;
@@ -63,8 +64,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let username = args.username.clone();
     let password = args.password.clone();
     let client_provider_config = Arc::new(ClientProviderConfig::from_args(iggy_args)?);
-    let client = client_provider::get_raw_client(client_provider_config, false).await?;
-    let client = IggyClient::create(client, None, encryptor);
+
+    let transport = client_provider_config.transport.clone();
+    let mut client = None;
+    match transport.as_str() {
+        "quic" => {
+            client = client_provider::get_raw_client::<QuicClient>(client_provider_config, false)
+                .await?;
+            client = IggyClient::<QuicClient>::create(client, None, encryptor);
+        }
+        "http" => {
+            client = client_provider::get_raw_client::<HttpClient>(client_provider_config, false)
+                .await?;
+            client = IggyClient::<HttpClient>::create(client, None, encryptor);
+        }
+        "tcp" => {
+            client =
+                client_provider::get_raw_client::<TcpClient>(client_provider_config, false).await?;
+            client = IggyClient::<TcpClient>::create(client, None, encryptor);
+        }
+        _ => Err(ClientError::InvalidTransport(transport)),
+    }
     client.connect().await?;
     client.login_user(&username, &password).await.unwrap();
     info!("Data seeder has started...");

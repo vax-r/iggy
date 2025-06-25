@@ -41,9 +41,9 @@ use crate::{
 
 pub static SOURCE_SENDERS: Lazy<DashMap<u32, Sender<ProducedMessages>>> = Lazy::new(DashMap::new);
 
-pub async fn init(
+pub async fn init<T: Client + Default + 'static>(
     source_configs: HashMap<String, SourceConfig>,
-    iggy_client: &IggyClient,
+    iggy_client: &IggyClient<T>,
 ) -> Result<HashMap<String, SourceConnector>, RuntimeError> {
     let mut source_connectors: HashMap<String, SourceConnector> = HashMap::new();
     for (key, config) in source_configs {
