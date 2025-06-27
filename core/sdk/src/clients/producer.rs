@@ -23,7 +23,7 @@ use crate::clients::producer_dispatcher::ProducerDispatcher;
 use bytes::Bytes;
 use futures_util::StreamExt;
 use iggy_binary_protocol::Client;
-use iggy_common::locking::{IggySharedMut, IggySharedMutFn};
+use iggy_common::locking::{IggyRwLock, IggySharedMutFn};
 use iggy_common::{
     CompressionAlgorithm, DiagnosticEvent, EncryptorKind, IdKind, Identifier, IggyDuration,
     IggyError, IggyExpiry, IggyMessage, IggyTimestamp, MaxTopicSize, Partitioner, Partitioning,
@@ -52,7 +52,7 @@ pub trait ProducerCoreBackend: Send + Sync + 'static {
 pub struct ProducerCore {
     initialized: AtomicBool,
     can_send: Arc<AtomicBool>,
-    client: Arc<IggySharedMut<Box<dyn Client>>>,
+    client: Arc<IggyRwLock<Box<dyn Client>>>,
     stream_id: Arc<Identifier>,
     stream_name: String,
     topic_id: Arc<Identifier>,
@@ -431,7 +431,7 @@ pub struct IggyProducer {
 impl IggyProducer {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
-        client: IggySharedMut<Box<dyn Client>>,
+        client: IggyRwLock<Box<dyn Client>>,
         stream: Identifier,
         stream_name: String,
         topic: Identifier,

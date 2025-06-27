@@ -17,7 +17,7 @@
  */
 
 use crate::clients::client_builder::IggyClientBuilder;
-use iggy_common::locking::{IggySharedMut, IggySharedMutFn};
+use iggy_common::locking::{IggyRwLock, IggySharedMutFn};
 
 use crate::http::http_client::HttpClient;
 use crate::prelude::EncryptorKind;
@@ -45,7 +45,7 @@ use tracing::{debug, error, info};
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct IggyClient {
-    pub(crate) client: IggySharedMut<Box<dyn Client>>,
+    pub(crate) client: IggyRwLock<Box<dyn Client>>,
     partitioner: Option<Arc<dyn Partitioner>>,
     pub(crate) encryptor: Option<Arc<EncryptorKind>>,
 }
@@ -71,7 +71,7 @@ impl IggyClient {
 
     /// Creates a new `IggyClient` with the provided client implementation for the specific transport.
     pub fn new(client: Box<dyn Client>) -> Self {
-        let client = IggySharedMut::new(client);
+        let client = IggyRwLock::new(client);
         IggyClient {
             client,
             partitioner: None,
@@ -106,7 +106,7 @@ impl IggyClient {
             info!("Client-side encryption is enabled.");
         }
 
-        let client = IggySharedMut::new(client);
+        let client = IggyRwLock::new(client);
         IggyClient {
             client,
             partitioner,
@@ -115,7 +115,7 @@ impl IggyClient {
     }
 
     /// Returns the underlying client implementation for the specific transport.
-    pub fn client(&self) -> IggySharedMut<Box<dyn Client>> {
+    pub fn client(&self) -> IggyRwLock<Box<dyn Client>> {
         self.client.clone()
     }
 
