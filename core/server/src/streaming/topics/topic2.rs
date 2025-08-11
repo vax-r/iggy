@@ -1,15 +1,15 @@
+use crate::streaming::stats::stats::PartitionStats;
 use crate::{
     slab::{
-        IndexedSlab, Keyed,
+        Keyed,
         consumer_groups::ConsumerGroups,
         partitions::{PARTITIONS_CAPACITY, Partitions},
     },
-    streaming::partitions::partition::ConsumerOffset,
+    streaming::partitions::consumer_offset,
 };
-use ahash::AHashMap;
-use dashmap::DashMap;
 use iggy_common::{CompressionAlgorithm, IggyExpiry, IggyTimestamp, MaxTopicSize};
 use slab::Slab;
+use std::sync::Arc;
 
 #[derive(Default, Debug)]
 pub struct Topic {
@@ -24,9 +24,6 @@ pub struct Topic {
 
     partitions: Partitions,
     consumer_groups: ConsumerGroups,
-
-    consumer_offsets: Slab<AHashMap<usize, ConsumerOffset>>,
-    consumer_group_offsets: Slab<AHashMap<usize, ConsumerOffset>>,
 }
 
 impl Topic {
@@ -47,8 +44,6 @@ impl Topic {
             max_topic_size,
             partitions: Partitions::default(),
             consumer_groups: ConsumerGroups::default(),
-            consumer_offsets: Slab::with_capacity(PARTITIONS_CAPACITY),
-            consumer_group_offsets: Slab::with_capacity(PARTITIONS_CAPACITY),
         }
     }
 
@@ -62,6 +57,13 @@ impl Topic {
 
     pub async fn invoke_async<T>(&self, f: impl AsyncFnOnce(&Self) -> T) -> T {
         f(self).await
+    }
+
+    pub fn with_partition_stats_mut<T>(
+        &mut self,
+        f: impl FnOnce(&mut Slab<Arc<PartitionStats>>) -> T,
+    ) -> T {
+        self.partitions.with_stats_mut(f)
     }
 
     pub fn message_expiry(&self) -> IggyExpiry {
@@ -112,23 +114,7 @@ impl Topic {
         &mut self.consumer_groups
     }
 
-    pub fn consumer_offsets(&self) -> &Slab<AHashMap<usize, ConsumerOffset>> {
-        &self.consumer_offsets
-    }
-
-    pub fn consumer_offsets_mut(&mut self) -> &mut Slab<AHashMap<usize, ConsumerOffset>> {
-        &mut self.consumer_offsets
-    }
-
-    pub fn consumer_group_offsets(&self) -> &Slab<AHashMap<usize, ConsumerOffset>> {
-        &self.consumer_group_offsets
-    }
-
-    pub fn consumer_group_offsets_mut(&mut self) -> &mut Slab<AHashMap<usize, ConsumerOffset>> {
-        &mut self.consumer_group_offsets
-    }
-
-    pub fn insert_into(self, container: &mut IndexedSlab<Self>) -> usize {
+    pub fn insert_into(self, container: &mut Slab<Self>) -> usize {
         let idx = container.insert(self);
         let topic = &mut container[idx];
         topic.id = idx;

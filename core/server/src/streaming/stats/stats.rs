@@ -57,9 +57,9 @@ pub struct PartitionStats {
 }
 
 impl PartitionStats {
-    pub fn new(parent: Arc<TopicStats>) -> Self {
+    pub fn new(parent_stats: Arc<TopicStats>) -> Self {
         Self {
-            parent,
+            parent: parent_stats,
             messages_count: AtomicU64::new(0),
             size_bytes: AtomicU64::new(0),
         }

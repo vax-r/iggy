@@ -20,6 +20,8 @@ use std::cell::Ref;
 
 use super::COMPONENT;
 use crate::shard::IggyShard;
+use crate::slab::traits_ext::EntityComponentSystem;
+use crate::slab::traits_ext::IntoComponents;
 use crate::streaming::session::Session;
 use crate::streaming::streams::stream::Stream;
 use crate::streaming::topics::consumer_group::ConsumerGroup;
@@ -151,8 +153,8 @@ impl IggyShard {
             .streams2
             .with_topic_by_id_mut(stream_id, topic_id, |topic| {
                 let partitions = topic.partitions().with(|partitions| {
-                    partitions
-                        .iter()
+                    let (info, _, _, _, _, _) = partitions.into_components();
+                    info.iter()
                         .map(|(_, partition)| partition.id())
                         .collect::<Vec<_>>()
                 });
@@ -262,22 +264,25 @@ impl IggyShard {
         let cg = self
             .streams2
             .with_topic_by_id_mut(stream_id, topic_id, |topic| {
-                topic.consumer_groups_mut().with_mut(|container| {
-                    match group_id.kind {
-                        iggy_common::IdKind::Numeric => {
+                match group_id.kind {
+                    iggy_common::IdKind::Numeric => {
+                        topic.consumer_groups_mut().with_mut(|container| {
                             container.try_remove(group_id.get_u32_value().unwrap() as usize)
-                        }
-                        iggy_common::IdKind::String => {
-                            let key = group_id.get_cow_str_value().unwrap().to_string();
-                            container.try_remove_by_key(&key)
-                        }
+                        })
                     }
-                    .ok_or_else(|| {
-                        //TODO: Fix the not found erros to accept Identifier instead of u32
-                        IggyError::ConsumerGroupIdNotFound(0, 0)
-                    })
-                })
-            })?;
+                    iggy_common::IdKind::String => {
+                        let key = group_id.get_string_value().unwrap();
+                        let id = topic
+                            .consumer_groups()
+                            .with_index(|index| *(index.get(&key).unwrap()));
+                        topic
+                            .consumer_groups_mut()
+                            .with_mut(|container| container.try_remove(id))
+                    }
+                }
+                // TODO: Fix
+            })
+            .ok_or_else(|| IggyError::ConsumerGroupIdNotFound(0, 0))?;
         Ok(cg)
     }
 

@@ -1,9 +1,10 @@
+use ahash::AHashMap;
 use iggy_common::Identifier;
 use slab::Slab;
 use std::{cell::RefCell, sync::Arc};
 
 use crate::{
-    slab::{IndexedSlab, Keyed, partitions::Partitions},
+    slab::{Keyed, partitions::Partitions},
     streaming::{partitions::partition2, stats::stats::TopicStats, topics::topic2},
 };
 
@@ -11,14 +12,16 @@ const CAPACITY: usize = 1024;
 
 #[derive(Debug)]
 pub struct Topics {
-    container: RefCell<IndexedSlab<topic2::Topic>>,
+    index: RefCell<AHashMap<<topic2::Topic as Keyed>::Key, usize>>,
+    container: RefCell<Slab<topic2::Topic>>,
     stats: RefCell<Slab<Arc<TopicStats>>>,
 }
 
 impl Topics {
     pub fn init() -> Self {
         Self {
-            container: RefCell::new(IndexedSlab::with_capacity(CAPACITY)),
+            index: RefCell::new(AHashMap::with_capacity(CAPACITY)),
+            container: RefCell::new(Slab::with_capacity(CAPACITY)),
             stats: RefCell::new(Slab::with_capacity(CAPACITY)),
         }
     }
@@ -27,43 +30,22 @@ impl Topics {
         match id.kind {
             iggy_common::IdKind::Numeric => {
                 let id = id.get_u32_value().unwrap() as usize;
-                self.container.borrow().slab.contains(id)
+                self.container.borrow().contains(id)
             }
             iggy_common::IdKind::String => {
                 let key = id.get_string_value().unwrap();
-                self.container.borrow().index.contains_key(&key)
+                self.index.borrow().contains_key(&key)
             }
         }
     }
 
-    fn get_topic_ref<'topics>(
-        id: &Identifier,
-        slab: &'topics IndexedSlab<topic2::Topic>,
-    ) -> &'topics topic2::Topic {
+    fn get_index(&self, id: &Identifier) -> usize {
         match id.kind {
-            iggy_common::IdKind::Numeric => {
-                let idx = id.get_u32_value().unwrap() as usize;
-                &slab[idx]
-            }
+            iggy_common::IdKind::Numeric => id.get_u32_value().unwrap() as usize,
             iggy_common::IdKind::String => {
                 let key = id.get_string_value().unwrap();
-                unsafe { slab.get_by_key_unchecked(&key) }
-            }
-        }
-    }
-
-    fn get_topic_mut<'topics>(
-        id: &Identifier,
-        slab: &'topics mut IndexedSlab<topic2::Topic>,
-    ) -> &'topics mut topic2::Topic {
-        match id.kind {
-            iggy_common::IdKind::Numeric => {
-                let idx = id.get_u32_value().unwrap() as usize;
-                &mut slab[idx]
-            }
-            iggy_common::IdKind::String => {
-                let key = id.get_string_value().unwrap();
-                unsafe { slab.get_by_key_mut_unchecked(&key) }
+                tracing::error!("Getting index for topic: {key}, index: {:?}", self.index.borrow());
+                *self.index.borrow().get(&key).expect("Topic not found")
             }
         }
     }
@@ -72,19 +54,27 @@ impl Topics {
         self.container.borrow().len()
     }
 
-    pub async fn with_async<T>(&self, f: impl AsyncFnOnce(&IndexedSlab<topic2::Topic>) -> T) -> T {
+    pub async fn with_async<T>(&self, f: impl AsyncFnOnce(&Slab<topic2::Topic>) -> T) -> T {
         let container = self.container.borrow();
         f(&container).await
     }
 
-    pub fn with<T>(&self, f: impl FnOnce(&IndexedSlab<topic2::Topic>) -> T) -> T {
+    pub fn with<T>(&self, f: impl FnOnce(&Slab<topic2::Topic>) -> T) -> T {
         let container = self.container.borrow();
         f(&container)
     }
 
-    pub fn with_mut<T>(&self, f: impl FnOnce(&mut IndexedSlab<topic2::Topic>) -> T) -> T {
+    pub fn with_mut<T>(&self, f: impl FnOnce(&mut Slab<topic2::Topic>) -> T) -> T {
         let mut container = self.container.borrow_mut();
         f(&mut container)
+    }
+
+    pub fn with_mut_index<T>(
+        &self,
+        f: impl FnOnce(&mut AHashMap<<topic2::Topic as Keyed>::Key, usize>) -> T,
+    ) -> T {
+        let mut index = self.index.borrow_mut();
+        f(&mut index)
     }
 
     pub async fn with_topic_by_id_async<T>(
@@ -92,12 +82,23 @@ impl Topics {
         id: &Identifier,
         f: impl AsyncFnOnce(&topic2::Topic) -> T,
     ) -> T {
-        self.with_async(async |topics| Self::get_topic_ref(id, topics).invoke_async(f).await)
+        let id = self.get_index(id);
+        self.with_async(async |topics| topics[id].invoke_async(f).await)
             .await
     }
 
+    pub fn with_topic_stats_by_id<T>(
+        &self,
+        id: &Identifier,
+        f: impl FnOnce(Arc<TopicStats>) -> T,
+    ) -> T {
+        let topic_id = self.with_topic_by_id(id, |topic| topic.id());
+        self.with_stats(|stats| f(stats[topic_id].clone()))
+    }
+
     pub fn with_topic_by_id<T>(&self, id: &Identifier, f: impl FnOnce(&topic2::Topic) -> T) -> T {
-        self.with(|topics| Self::get_topic_ref(id, topics).invoke(f))
+        let id = self.get_index(id);
+        self.with(|topics| topics[id].invoke(f))
     }
 
     pub fn with_topic_by_id_mut<T>(
@@ -105,7 +106,8 @@ impl Topics {
         id: &Identifier,
         f: impl FnOnce(&mut topic2::Topic) -> T,
     ) -> T {
-        self.with_mut(|topics| Self::get_topic_mut(id, topics).invoke_mut(f))
+        let id = self.get_index(id);
+        self.with_mut(|topics| topics[id].invoke_mut(f))
     }
 
     pub fn with_partitions(&self, topic_id: &Identifier, f: impl FnOnce(&Partitions)) {
@@ -123,17 +125,6 @@ impl Topics {
     ) -> T {
         self.with_topic_by_id_async(topic_id, async |topic| f(topic.partitions()).await)
             .await
-    }
-
-    pub fn with_partition_by_id(
-        &self,
-        id: &Identifier,
-        partition_id: usize,
-        f: impl FnOnce(&partition2::Partition),
-    ) {
-        self.with_partitions(id, |partitions| {
-            partitions.with_partition_id(partition_id, f);
-        });
     }
 
     pub fn with_stats<T>(&self, f: impl FnOnce(&Slab<Arc<TopicStats>>) -> T) -> T {

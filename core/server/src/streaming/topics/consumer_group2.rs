@@ -1,6 +1,6 @@
 use crate::{
     binary::handlers::partitions,
-    slab::{IndexedSlab, Keyed, partitions::PARTITIONS_CAPACITY},
+    slab::{Keyed, partitions::PARTITIONS_CAPACITY},
 };
 use ahash::AHashMap;
 use arcshift::ArcShift;
@@ -39,7 +39,7 @@ impl ConsumerGroup {
         self.id
     }
 
-    pub fn insert_into(self, container: &mut IndexedSlab<Self>) -> usize {
+    pub fn insert_into(self, container: &mut Slab<Self>) -> usize {
         let idx = container.insert(self);
         let group = &mut container[idx];
         group.id = idx;
@@ -52,9 +52,12 @@ impl ConsumerGroup {
 
     pub fn reassign_partitions(&mut self, partitions: Vec<usize>) {
         self.partitions = partitions;
-        let mut members = self.mimic_members();
-        self.assign_partitions_to_members(&mut members);
-        self.members.update(members);
+        self.members.rcu(|members| {
+            let mut members = Self::mimic_members(members);
+            let partitions = self.partitions.clone();
+            Self::assign_partitions_to_members(self.id, &mut members, partitions);
+            members
+        });
     }
 
     pub fn calculate_partition_id_unchecked(&self, member_id: usize) -> Option<usize> {
@@ -91,10 +94,13 @@ impl ConsumerGroup {
     }
 
     pub fn add_member(&mut self, client_id: u32) {
-        let mut members = self.mimic_members();
-        Member::new(client_id).insert_into(&mut members);
-        self.assign_partitions_to_members(&mut members);
-        self.members.update(members);
+        self.members.rcu(|members| {
+            let mut members = Self::mimic_members(members);
+            Member::new(client_id).insert_into(&mut members);
+            let partitions = self.partitions.clone();
+            Self::assign_partitions_to_members(self.id, &mut members, partitions);
+            members
+        });
     }
 
     pub fn delete_member(&mut self, client_id: u32) {
@@ -104,38 +110,39 @@ impl ConsumerGroup {
             .iter()
             .find_map(|(_, member)| (member.client_id == client_id).then_some(member.id))
             .expect("delete_member: find member in consumer group slab");
-        let mut members = self.mimic_members();
-        members.remove(member_id);
-        members.compact(|entry, _, idx| {
-            entry.id = idx;
-            true
+        self.members.rcu(|members| {
+            let mut members = Self::mimic_members(members);
+            let partitions = self.partitions.clone();
+            members.remove(member_id);
+            members.compact(|entry, _, idx| {
+                entry.id = idx;
+                true
+            });
+            Self::assign_partitions_to_members(self.id, &mut members, partitions);
+            members
         });
-        self.assign_partitions_to_members(&mut members);
-        self.members.update(members);
     }
 
-    fn mimic_members(&self) -> Slab<Member> {
-        let mut container = Slab::with_capacity(self.members.shared_get().len());
-        self.with_members(|members| {
-            for (_, member) in members {
-                Member::new(member.client_id).insert_into(&mut container);
-            }
-        });
+    fn mimic_members(members: &Slab<Member>) -> Slab<Member> {
+        let mut container = Slab::with_capacity(members.len());
+        for (_, member) in members {
+            Member::new(member.client_id).insert_into(&mut container);
+        }
         container
     }
 
-    fn assign_partitions_to_members(&self, members: &mut Slab<Member>) {
+    fn assign_partitions_to_members(id: usize, members: &mut Slab<Member>, partitions: Vec<usize>) {
         members
             .iter_mut()
             .for_each(|(_, member)| member.partitions.clear());
         let count = members.len();
-        for (idx, partition) in self.partitions.iter().enumerate() {
+        for (idx, partition) in partitions.iter().enumerate() {
             let position = idx % count;
             let member = &mut members[position];
             member.partitions.push(*partition);
             trace!(
                 "Assigned partition ID: {} to member with ID: {} in consumer group: {}",
-                partition, member.id, self.id
+                partition, member.id, id
             );
         }
     }
@@ -206,7 +213,6 @@ mod tests {
     }
 
     #[test_matrix([1, 10, 25, 34, 100, 255, 512, 1024, 4096, 8192, 16384])]
-    #[test]
     fn test_initial_creation_with_few_members(members_count: usize) {
         let consumer_group = create_test_consumer_group("test_group", members_count);
 
@@ -227,7 +233,6 @@ mod tests {
 
     #[test_matrix([10, 20, 25, 34, 100, 255, 512, 1024, 4096, 8192, 16384],
         [1, 2, 3, 4 , 5, 6, 7, 8, 9, 12])]
-    #[test]
     fn test_consumer_group_partition_assignment(members_count: usize, multiplier: usize) {
         let partitions = (0..(members_count * multiplier)).collect::<Vec<_>>();
         let mut consumer_group = create_test_consumer_group("test_group", members_count);
@@ -245,7 +250,6 @@ mod tests {
     }
 
     #[test_matrix([10, 20, 26, 30, 60, 100], [10, 25, 32, 45, 96, 100, 128, 256, 321], [1, 2, 3, 4, 5, 6, 7, 8, 9])]
-    #[test]
     fn test_consumer_group_join_members(
         mut members_count: usize,
         partitions_count: usize,

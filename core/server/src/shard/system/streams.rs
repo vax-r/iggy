@@ -35,7 +35,9 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use tokio::fs;
 use tracing::{error, info, warn};
 
-static CURRENT_STREAM_ID: AtomicU32 = AtomicU32::new(1);
+thread_local! {
+    static CURRENT_STREAM_ID: AtomicU32 = AtomicU32::new(1);
+}
 
 impl IggyShard {
     pub fn get_streams(&self) -> Vec<Ref<'_, Stream>> {
@@ -239,10 +241,14 @@ impl IggyShard {
         if exists {
             return Err(IggyError::StreamNameAlreadyExists(name));
         }
+        let key = name.clone();
         let stream = stream2::Stream::new(name);
         let stream_id = self
             .streams2
             .with_mut(|streams| stream.insert_into(streams));
+        self.streams2.with_index_mut(|index| {
+            index.insert(key, stream_id);
+        });
         self.streams2
             .with_stats_mut(|container| container.insert(stats));
         Ok(stream_id)
@@ -283,13 +289,14 @@ impl IggyShard {
 
         let mut id;
         if stream_id.is_none() {
-            id = CURRENT_STREAM_ID.fetch_add(1, Ordering::SeqCst);
+            id = CURRENT_STREAM_ID.with(|current_id| current_id.fetch_add(1, Ordering::SeqCst));
             loop {
                 if self.streams.borrow().contains_key(&id) {
                     if id == u32::MAX {
                         return Err(IggyError::StreamIdAlreadyExists(id));
                     }
-                    id = CURRENT_STREAM_ID.fetch_add(1, Ordering::SeqCst);
+                    id = CURRENT_STREAM_ID
+                        .with(|current_id| current_id.fetch_add(1, Ordering::SeqCst));
                 } else {
                     break;
                 }
@@ -426,16 +433,19 @@ impl IggyShard {
         }
 
         // if stream with name already exists, return error
-        if self.streams2.with(|streams| streams.contains_key(&name)) {
+        if self.streams2.with_index(|index| index.contains_key(&name)) {
             return Err(IggyError::StreamNameAlreadyExists(name.to_string()));
         }
 
         self.streams2.with_stream_by_id_mut(id, |stream| {
             stream.set_name(name.clone());
         });
-
-        self.streams2
-            .with_mut(|streams| streams.update_key_unchecked(&old_name, name));
+      
+        self.streams2.with_index_mut(|index| {
+            // Rename the key inside of hashmap
+            let idx = index.remove(&old_name).expect("Rename key: key not found");
+            index.insert(name, idx);
+        });
         Ok(old_name)
     }
 
@@ -488,9 +498,10 @@ impl IggyShard {
             .decrement_partitions(stream.get_partitions_count());
         self.metrics.decrement_messages(stream.get_messages_count());
         self.metrics.decrement_segments(stream.get_segments_count());
-        let current_stream_id = CURRENT_STREAM_ID.load(Ordering::SeqCst);
+        let current_stream_id =
+            CURRENT_STREAM_ID.with(|current_id| current_id.load(Ordering::SeqCst));
         if current_stream_id > stream_id {
-            CURRENT_STREAM_ID.store(stream_id, Ordering::SeqCst);
+            CURRENT_STREAM_ID.with(|current_id| current_id.store(stream_id, Ordering::SeqCst));
         }
 
         self.client_manager
