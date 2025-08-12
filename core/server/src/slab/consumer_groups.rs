@@ -7,7 +7,7 @@ use std::sync::{Arc, atomic::AtomicUsize};
 
 const CAPACITY: usize = 1024;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ConsumerGroups {
     index: AHashMap<<consumer_group2::ConsumerGroup as Keyed>::Key, usize>,
     container: Slab<consumer_group2::ConsumerGroup>,

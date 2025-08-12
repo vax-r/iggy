@@ -1,34 +1,27 @@
 use crate::{
-    slab::traits_ext::{
-        Borrow, Components, Delete, EntityComponentSystem, EntityMarker, IndexComponents, Insert,
-        IntoComponents,
-    },
+    slab::traits_ext::{Borrow, Delete, EntityComponentSystem, Insert, IntoComponents},
     streaming::{
         deduplication::message_deduplicator::MessageDeduplicator,
         partitions::{
             consumer_offset,
-            partition::ConsumerOffset,
             partition2::{self, Partition, PartitionRef},
         },
         segments,
         stats::stats::PartitionStats,
+        topics::consumer_group,
     },
 };
-use ahash::AHashMap;
 use slab::Slab;
 use std::sync::{Arc, atomic::AtomicU64};
 
 // TODO: This could be upper limit of partitions per topic, use that value to validate instead of whathever this thing is in `common` crate.
 pub const PARTITIONS_CAPACITY: usize = 16384;
-pub type SlabId = usize;
+const SEGMENTS_CAPACITY: usize = 1024;
+pub type ContainerId = usize;
 
-struct PartitionOffset {
-    offset: u64,
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Partitions {
-    info: Slab<partition2::PartitionInfo>,
+    root: Slab<partition2::PartitionRoot>,
     stats: Slab<Arc<PartitionStats>>,
     segments: Slab<Vec<segments::Segment2>>,
     message_deduplicator: Slab<Option<MessageDeduplicator>>,
@@ -38,10 +31,63 @@ pub struct Partitions {
     consumer_group_offset: Slab<Arc<papaya::HashMap<usize, consumer_offset::ConsumerOffset>>>,
 }
 
+impl Insert for Partitions {
+    type Idx = ContainerId;
+    type Item = Partition;
+
+    fn insert(&mut self, item: Self::Item) -> Self::Idx {
+        let (root, stats, deduplicator, offset, consumer_offset, consumer_group_offset) =
+            item.into_components();
+
+        let entity_id = self.root.insert(root);
+        let id = self.stats.insert(stats);
+        assert_eq!(
+            entity_id, id,
+            "partition_insert: id mismatch when inserting stats"
+        );
+        let id = self.segments.insert(Vec::with_capacity(SEGMENTS_CAPACITY));
+        assert_eq!(
+            entity_id, id,
+            "partition_insert: id mismatch when inserting segments"
+        );
+        let id = self.message_deduplicator.insert(deduplicator);
+        assert_eq!(
+            entity_id, id,
+            "partition_insert: id mismatch when inserting message_deduplicator"
+        );
+        let id = self.offset.insert(offset);
+        assert_eq!(
+            entity_id, id,
+            "partition_insert: id mismatch when inserting offset"
+        );
+        let id = self.consumer_offset.insert(consumer_offset);
+        assert_eq!(
+            entity_id, id,
+            "partition_insert: id mismatch when inserting consumer_offset"
+        );
+        let id = self.consumer_group_offset.insert(consumer_group_offset);
+        assert_eq!(
+            entity_id, id,
+            "partition_insert: id mismatch when inserting consumer_group_offset"
+        );
+        entity_id
+    }
+}
+
+impl Delete for Partitions {
+    type Idx = ContainerId;
+    type Item = Partition;
+
+    fn delete(&mut self, id: Self::Idx) -> Self::Item {
+        todo!()
+    }
+}
+
+//TODO: those from impls could use a macro aswell.
 impl<'a> From<&'a Partitions> for PartitionRef<'a> {
     fn from(value: &'a Partitions) -> Self {
         PartitionRef::new(
-            &value.info,
+            &value.root,
             &value.stats,
             &value.message_deduplicator,
             &value.offset,
@@ -51,40 +97,8 @@ impl<'a> From<&'a Partitions> for PartitionRef<'a> {
     }
 }
 
-impl Insert<SlabId> for Partitions {
-    type Item = Partition;
-
-    fn insert(&mut self, item: Self::Item) -> SlabId {
-        let (
-            info,
-            stats,
-            message_deduplicator,
-            offset,
-            consumer_offset,
-            consumer_group_offset,
-        ) = item.into_components();
-
-        let id = self.info.insert(info);
-        let info = &mut self.info[id];
-        info.update_id(id);
-        self.stats.insert(stats);
-        self.message_deduplicator.insert(message_deduplicator);
-        self.offset.insert(offset);
-        self.consumer_offset.insert(consumer_offset);
-        self.consumer_group_offset.insert(consumer_group_offset);
-        id
-    }
-}
-
-impl Delete<SlabId> for Partitions {
-    type Item = Partition;
-
-    fn delete(&mut self, id: SlabId) -> Self::Item {
-        todo!()
-    }
-}
-
-impl EntityComponentSystem<SlabId, Borrow> for Partitions {
+impl EntityComponentSystem<Borrow> for Partitions {
+    type Idx = ContainerId;
     type Entity = Partition;
     type EntityRef<'a> = PartitionRef<'a>;
 
@@ -106,7 +120,7 @@ impl EntityComponentSystem<SlabId, Borrow> for Partitions {
 impl Default for Partitions {
     fn default() -> Self {
         Self {
-            info: Slab::with_capacity(PARTITIONS_CAPACITY),
+            root: Slab::with_capacity(PARTITIONS_CAPACITY),
             stats: Slab::with_capacity(PARTITIONS_CAPACITY),
             segments: Slab::with_capacity(PARTITIONS_CAPACITY),
             message_deduplicator: Slab::with_capacity(PARTITIONS_CAPACITY),
@@ -118,8 +132,8 @@ impl Default for Partitions {
 }
 
 impl Partitions {
-    pub fn count(&self) -> usize {
-        self.info.len()
+    pub fn len(&self) -> usize {
+        self.root.len()
     }
 
     pub fn with_stats<T>(&self, f: impl FnOnce(&Slab<Arc<PartitionStats>>) -> T) -> T {
@@ -128,8 +142,7 @@ impl Partitions {
     }
 
     pub fn with_stats_mut<T>(&mut self, f: impl FnOnce(&mut Slab<Arc<PartitionStats>>) -> T) -> T {
-        let mut stats = &mut self.stats;
-        f(&mut stats)
+        f(&mut self.stats)
     }
 
     pub fn with_segments(&self, partition_id: usize, f: impl FnOnce(&Vec<segments::Segment2>)) {
