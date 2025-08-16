@@ -160,7 +160,6 @@ pub struct IggyShard {
     pub(crate) active_sessions: RefCell<Vec<Rc<Session>>>,
     pub(crate) permissioner: RefCell<Permissioner>,
     pub(crate) users: RefCell<HashMap<UserId, User>>,
-
     pub(crate) metrics: Metrics,
     pub messages_receiver: Cell<Option<Receiver<ShardFrame>>>,
     pub(crate) stop_receiver: StopReceiver,
@@ -178,7 +177,6 @@ impl IggyShard {
     pub fn default_from_config(server_config: ServerConfig) -> Self {
         use crate::bootstrap::resolve_persister;
         use crate::state::file::FileState;
-        use crate::streaming::diagnostics::metrics::Metrics;
         use crate::streaming::storage::SystemStorage;
         use crate::versioning::SemanticVersion;
 
