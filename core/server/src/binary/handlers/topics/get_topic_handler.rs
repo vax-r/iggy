@@ -22,8 +22,8 @@ use crate::binary::mapper;
 use crate::binary::sender::SenderKind;
 use crate::shard::IggyShard;
 use crate::streaming::session::Session;
+use crate::streaming::streams;
 use anyhow::Result;
-use error_set::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::get_topic::GetTopic;
 use std::rc::Rc;
@@ -42,26 +42,24 @@ impl ServerCommandHandler for GetTopic {
         shard: &Rc<IggyShard>,
     ) -> Result<(), IggyError> {
         debug!("session: {session}, command: {self}");
-        let stream = shard
-            .find_stream(session, &self.stream_id)
-            .with_error_context(|error| {
-                format!(
-                    "Failed to find stream with ID: {}, session: {session} (error: {error})",
-                    self.stream_id
-                )
-            })?;
-        let Ok(topic) = shard.try_find_topic(session, &stream, &self.topic_id) else {
-            sender.send_empty_ok_response().await?;
-            return Ok(());
-        };
+        shard.ensure_authenticated(session)?;
+        shard.ensure_topic_exists(&self.stream_id, &self.topic_id)?;
+        let numeric_stream_id = shard
+            .streams2
+            .with_stream_by_id(&self.stream_id, streams::helpers::get_stream_id());
+        shard.permissioner.borrow().get_topic(
+            session.get_user_id(),
+            numeric_stream_id as u32,
+            self.topic_id.get_u32_value().unwrap_or(0),
+        );
 
-        let Some(topic) = topic else {
-            sender.send_empty_ok_response().await?;
-            return Ok(());
-        };
-
-        let topic = mapper::map_topic(topic).await;
-        sender.send_ok_response(&topic).await?;
+        shard
+            .streams2
+            .with_topic_by_id_async(&self.stream_id, &self.topic_id, async |(root, stats)| {
+                let response = mapper::map_topic(&root, &stats);
+                sender.send_ok_response(&response).await
+            })
+            .await?;
         Ok(())
     }
 }

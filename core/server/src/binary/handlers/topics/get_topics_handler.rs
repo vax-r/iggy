@@ -17,14 +17,14 @@
  */
 
 use crate::binary::command::{BinaryServerCommand, ServerCommand, ServerCommandHandler};
-use crate::binary::handlers::topics::COMPONENT;
 use crate::binary::handlers::utils::receive_and_validate;
 use crate::binary::mapper;
 use crate::binary::sender::SenderKind;
 use crate::shard::IggyShard;
+use crate::slab::traits_ext::{EntityComponentSystem, IntoComponents};
 use crate::streaming::session::Session;
+use crate::streaming::streams;
 use anyhow::Result;
-use error_set::ErrContext;
 use iggy_common::IggyError;
 use iggy_common::get_topics::GetTopics;
 use std::rc::Rc;
@@ -43,23 +43,28 @@ impl ServerCommandHandler for GetTopics {
         shard: &Rc<IggyShard>,
     ) -> Result<(), IggyError> {
         debug!("session: {session}, command: {self}");
-        let stream = shard.find_stream(session, &self.stream_id)
-        .with_error_context(|error| {
-            format!(
-                "{COMPONENT} (error: {error}) - failed to get stream, stream_id: {}, session: {session}",
-                self.stream_id
-            )
-        })?;
-        let topics = shard
-            .find_topics(session, &stream)
-            .with_error_context(|error| {
-                format!(
-                    "{COMPONENT} (error: {error}) - failed to find topics, stream_id: {}, session: {session}",
-                    self.stream_id
-                )
-            })?;
-        let response = mapper::map_topics(topics);
-        sender.send_ok_response(&response).await?;
+        shard.ensure_authenticated(session)?;
+        shard.ensure_stream_exists(&self.stream_id)?;
+        let numeric_stream_id = shard
+            .streams2
+            .with_stream_by_id(&self.stream_id, streams::helpers::get_stream_id());
+        shard
+            .permissioner
+            .borrow()
+            .get_topics(session.get_user_id(), numeric_stream_id as u32);
+
+        shard
+            .streams2
+            .with_topics_async(&self.stream_id, async |topics| {
+                topics
+                    .with_components_async(async |topics| {
+                        let (roots, stats) = topics.into_components();
+                        let response = mapper::map_topics(&roots, &stats);
+                        sender.send_ok_response(&response).await
+                    })
+                    .await
+            })
+            .await?;
         Ok(())
     }
 }

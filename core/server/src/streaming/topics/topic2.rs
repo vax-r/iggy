@@ -1,8 +1,9 @@
+use crate::configs::system::SystemConfig;
 use crate::slab::topics;
 use crate::slab::traits_ext::{EntityMarker, IntoComponents, IntoComponentsById};
 use crate::slab::{Keyed, consumer_groups::ConsumerGroups, partitions::Partitions};
-use crate::streaming::stats::stats::{PartitionStats, TopicStats};
-use iggy_common::{CompressionAlgorithm, IggyExpiry, IggyTimestamp, MaxTopicSize};
+use crate::streaming::stats::stats::TopicStats;
+use iggy_common::{CompressionAlgorithm, IggyError, IggyExpiry, IggyTimestamp, MaxTopicSize};
 use slab::Slab;
 use std::cell::{Ref, RefMut};
 use std::sync::Arc;
@@ -160,7 +161,7 @@ impl TopicRoot {
         Self {
             id: 0,
             name,
-            created_at: IggyTimestamp::now(),
+            created_at,
             replication_factor,
             message_expiry,
             compression_algorithm: compression,
@@ -182,19 +183,16 @@ impl TopicRoot {
         f(self).await
     }
 
-    pub fn with_partition_stats_mut<T>(
-        &mut self,
-        f: impl FnOnce(&mut Slab<Arc<PartitionStats>>) -> T,
-    ) -> T {
-        self.partitions.with_stats_mut(f)
+    pub fn id(&self) -> topics::ContainerId {
+        self.id
     }
 
     pub fn message_expiry(&self) -> IggyExpiry {
         self.message_expiry
     }
 
-    pub fn id(&self) -> usize {
-        self.id
+    pub fn max_topic_size(&self) -> MaxTopicSize {
+        self.max_topic_size
     }
 
     pub fn name(&self) -> &String {
@@ -237,10 +235,41 @@ impl TopicRoot {
         &mut self.consumer_groups
     }
 
-    pub fn insert_into(self, container: &mut Slab<Self>) -> usize {
-        let idx = container.insert(self);
-        let topic = &mut container[idx];
-        topic.id = idx;
-        idx
+    pub fn created_at(&self) -> IggyTimestamp {
+        self.created_at
+    }
+
+    pub fn compression_algorithm(&self) -> CompressionAlgorithm {
+        self.compression_algorithm
+    }
+
+    pub fn replication_factor(&self) -> u8 {
+        self.replication_factor
+    }
+}
+
+pub fn resolve_max_topic_size(
+    max_topic_size: MaxTopicSize,
+    config: &SystemConfig,
+) -> Result<MaxTopicSize, IggyError> {
+    match max_topic_size {
+        MaxTopicSize::ServerDefault => Ok(config.topic.max_size),
+        _ => {
+            if max_topic_size.as_bytes_u64() < config.segment.size.as_bytes_u64() {
+                Err(IggyError::InvalidTopicSize(
+                    max_topic_size,
+                    config.segment.size,
+                ))
+            } else {
+                Ok(max_topic_size)
+            }
+        }
+    }
+}
+
+pub fn resolve_message_expiry(message_expiry: IggyExpiry, config: &SystemConfig) -> IggyExpiry {
+    match message_expiry {
+        IggyExpiry::ServerDefault => config.segment.message_expiry,
+        _ => message_expiry,
     }
 }

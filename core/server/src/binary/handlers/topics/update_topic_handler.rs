@@ -23,6 +23,7 @@ use crate::shard::IggyShard;
 use crate::shard::transmission::event::ShardEvent;
 use crate::state::command::EntryCommand;
 use crate::streaming::session::Session;
+use crate::streaming::topics;
 use anyhow::Result;
 use error_set::ErrContext;
 use iggy_common::IggyError;
@@ -54,6 +55,16 @@ impl ServerCommandHandler for UpdateTopic {
             self.max_topic_size,
             self.replication_factor,
         );
+        self.message_expiry = shard.streams2.with_topic_by_id(
+            &self.stream_id,
+            &self.topic_id,
+            topics::helpers::get_message_expiry(),
+        );
+        self.max_topic_size = shard.streams2.with_topic_by_id(
+            &self.stream_id,
+            &self.topic_id,
+            topics::helpers::get_max_topic_size(),
+        );
         let event = ShardEvent::UpdatedTopic2 {
             stream_id: self.stream_id.clone(),
             topic_id: self.topic_id.clone(),
@@ -64,49 +75,6 @@ impl ServerCommandHandler for UpdateTopic {
             replication_factor: self.replication_factor,
         };
         let _responses = shard.broadcast_event_to_all_shards(event.into()).await;
-
-        /*
-        shard
-                .update_topic(
-                    session,
-                    &self.stream_id,
-                    &self.topic_id,
-                    &self.name,
-                    self.message_expiry,
-                    self.compression_algorithm,
-                    self.max_topic_size,
-                    self.replication_factor,
-                )
-                .await
-                .with_error_context(|error| format!(
-                    "{COMPONENT} (error: {error}) - failed to update topic with id: {}, stream_id: {}, session: {session}",
-                    self.topic_id, self.stream_id
-                ))?;
-        let event = ShardEvent::UpdatedTopic {
-            stream_id: self.stream_id.clone(),
-            topic_id: self.topic_id.clone(),
-            name: self.name.clone(),
-            message_expiry: self.message_expiry,
-            compression_algorithm: self.compression_algorithm,
-            max_topic_size: self.max_topic_size,
-            replication_factor: self.replication_factor,
-        };
-        let _responses = shard.broadcast_event_to_all_shards(event.into()).await;
-
-        let stream = shard.find_stream(session, &self.stream_id)
-            .with_error_context(|error| format!(
-                "{COMPONENT} (error: {error}) - failed to find stream, stream_id: {}, session: {session}",
-                self.stream_id
-            ))?;
-        let topic = stream
-            .get_topic(&self.topic_id)
-            .with_error_context(|error| format!(
-                "{COMPONENT} (error: {error}) - failed to find topic, topic_id: {}, stream_id: {}, session: {session}",
-                self.topic_id, self.stream_id
-            ))?;
-        self.message_expiry = topic.message_expiry;
-        self.max_topic_size = topic.max_topic_size;
-
         let topic_id = self.topic_id.clone();
         let stream_id = self.stream_id.clone();
 
@@ -117,7 +85,6 @@ impl ServerCommandHandler for UpdateTopic {
             .with_error_context(|error| format!(
                 "{COMPONENT} (error: {error}) - failed to apply update topic with id: {topic_id}, stream_id: {stream_id}, session: {session}"
             ))?;
-        */
         sender.send_empty_ok_response().await?;
         Ok(())
     }
