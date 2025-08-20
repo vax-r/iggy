@@ -166,6 +166,7 @@ pub struct IggyShard {
     pub(crate) task_registry: TaskRegistry,
     pub(crate) is_shutting_down: AtomicBool,
     pub(crate) tcp_bound_address: Cell<Option<SocketAddr>>,
+    pub(crate) quic_bound_address: Cell<Option<SocketAddr>>,
 }
 
 impl IggyShard {
@@ -218,6 +219,7 @@ impl IggyShard {
             task_registry: TaskRegistry::new(),
             is_shutting_down: AtomicBool::new(false),
             tcp_bound_address: Cell::new(None),
+            quic_bound_address: Cell::new(None),
         };
         let user = User::root(DEFAULT_ROOT_USERNAME, DEFAULT_ROOT_PASSWORD);
         shard
@@ -270,6 +272,10 @@ impl IggyShard {
                 self.config.http.clone(),
                 self.clone(),
             )));
+        }
+
+        if self.config.quic.enabled {
+            tasks.push(Box::pin(crate::quic::quic_server::span_quic_server(self.clone())));
         }
 
         let stop_receiver = self.get_stop_receiver();

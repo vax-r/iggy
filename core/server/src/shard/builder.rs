@@ -148,6 +148,7 @@ impl IggyShardBuilder {
             task_registry: TaskRegistry::new(),
             is_shutting_down: AtomicBool::new(false),
             tcp_bound_address: Cell::new(None),
+            quic_bound_address: Cell::new(None),
 
             streams2: Streams::init(),
             users: Default::default(),
