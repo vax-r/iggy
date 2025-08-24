@@ -59,4 +59,8 @@ impl StreamClient for IggyClient {
     async fn purge_stream(&self, stream_id: &Identifier) -> Result<(), IggyError> {
         self.client.read().await.purge_stream(stream_id).await
     }
+
+    fn test_fn(&self) -> IggySharedMutFn {
+        self.client.read().await.test_fn()
+    }
 }
