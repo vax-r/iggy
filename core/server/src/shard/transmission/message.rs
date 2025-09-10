@@ -1,6 +1,6 @@
 use std::{rc::Rc, sync::Arc};
 
-use iggy_common::PollingStrategy;
+use iggy_common::{Identifier, PollingStrategy};
 
 /* Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -24,6 +24,7 @@ use crate::{
         system::messages::PollingArgs,
         transmission::{event::ShardEvent, frame::ShardResponse},
     },
+    slab::partitions,
     streaming::{polling_consumer::PollingConsumer, segments::IggyMessagesBatchMut},
 };
 
@@ -41,17 +42,17 @@ pub enum ShardMessage {
 
 #[derive(Debug)]
 pub struct ShardRequest {
-    pub stream_id: u32,
-    pub topic_id: u32,
-    pub partition_id: u32,
+    pub stream_id: Identifier,
+    pub topic_id: Identifier,
+    pub partition_id: usize,
     pub payload: ShardRequestPayload,
 }
 
 impl ShardRequest {
     pub fn new(
-        stream_id: u32,
-        topic_id: u32,
-        partition_id: u32,
+        stream_id: Identifier,
+        topic_id: Identifier,
+        partition_id: partitions::ContainerId,
         payload: ShardRequestPayload,
     ) -> Self {
         Self {
