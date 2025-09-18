@@ -36,9 +36,13 @@ impl Storage {
         let index_writer =
             IndexWriter::new(index_path, indexes_size.clone(), index_fsync, file_exists).await?;
 
+        if file_exists {
+            messages_writer.fsync().await?;
+            index_writer.fsync().await?;
+        }
+
         let messages_reader = MessagesReader::new(messages_path, size).await?;
         let index_reader = IndexReader::new(index_path, indexes_size).await?;
-
         Ok(Self {
             messages_writer: Some(messages_writer),
             messages_reader: Some(messages_reader),
@@ -64,7 +68,8 @@ pub async fn create_segment_storage(
     indexes_size: u64,
     start_offset: u64,
 ) -> Result<Storage, IggyError> {
-    let messages_path = config.get_segment_path(stream_id, topic_id, partition_id, start_offset);
+    let messages_path =
+        config.get_messages_file_path(stream_id, topic_id, partition_id, start_offset);
     let index_path = config.get_index_path(stream_id, topic_id, partition_id, start_offset);
     let log_fsync = config.partition.enforce_fsync;
     let index_fsync = config.partition.enforce_fsync;
