@@ -123,7 +123,7 @@ impl System {
             info!("Using the default root user credentials...");
             username = Ok(DEFAULT_ROOT_USERNAME.to_string());
             let generated_password = crypto::generate_secret(20..40);
-            println!("Generated root user password: {generated_password}");
+            info!("Generated root user password: {generated_password}");
             password = Ok(generated_password);
         }
 
