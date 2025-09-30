@@ -16,8 +16,6 @@
  * under the License.
  */
 
-use std::sync::atomic::Ordering;
-
 use super::COMPONENT;
 use crate::binary::handlers::messages::poll_messages_handler::IggyPollMetadata;
 use crate::shard::IggyShard;
@@ -34,10 +32,11 @@ use crate::streaming::traits::MainOps;
 use crate::streaming::utils::{PooledBuffer, hash};
 use crate::streaming::{partitions, streams, topics};
 use error_set::ErrContext;
-
 use iggy_common::{
-    BytesSerializable, Consumer, EncryptorKind, Identifier, IggyError, IggyTimestamp, Partitioning, PartitioningKind, PollingKind, PollingStrategy, IGGY_MESSAGE_HEADER_SIZE
+    BytesSerializable, Consumer, EncryptorKind, IGGY_MESSAGE_HEADER_SIZE, Identifier, IggyError,
+    IggyTimestamp, Partitioning, PartitioningKind, PollingKind, PollingStrategy,
 };
+use std::sync::atomic::Ordering;
 use tracing::{error, trace};
 
 impl IggyShard {
@@ -142,7 +141,13 @@ impl IggyShard {
                     let batch = self.maybe_encrypt_messages(batch)?;
                     let messages_count = batch.count();
                     self.streams2
-                        .append_messages(self.id, &self.config.system, &ns, batch)
+                        .append_messages(
+                            self.id,
+                            &self.config.system,
+                            &self.task_registry,
+                            &ns,
+                            batch,
+                        )
                         .await?;
                     self.metrics.increment_messages(messages_count as u64);
                     Ok(())
@@ -351,7 +356,6 @@ impl IggyShard {
         self.ensure_authenticated(session)?;
         todo!();
     }
-
 
     async fn decrypt_messages(
         &self,

@@ -19,12 +19,48 @@ inner() * or more contributor license agreements.  See the NOTICE file
 pub mod builder;
 pub mod logging;
 pub mod namespace;
-pub mod stats;
 pub mod system;
 pub mod task_registry;
 pub mod tasks;
 pub mod transmission;
 
+use self::tasks::{continuous, periodic};
+use crate::{
+    binary::handlers::messages::poll_messages_handler::IggyPollMetadata,
+    configs::server::ServerConfig,
+    io::fs_utils,
+    shard::{
+        namespace::{IggyFullNamespace, IggyNamespace},
+        task_registry::TaskRegistry,
+        transmission::{
+            event::ShardEvent,
+            frame::{ShardFrame, ShardResponse},
+            message::{ShardMessage, ShardRequest, ShardRequestPayload, ShardSendRequestResult},
+        },
+    },
+    shard_error, shard_info, shard_warn,
+    slab::{
+        streams::Streams,
+        traits_ext::{EntityComponentSystem, EntityMarker, Insert},
+    },
+    state::{
+        StateKind,
+        file::FileState,
+        system::{StreamState, SystemState, UserState},
+    },
+    streaming::{
+        clients::client_manager::ClientManager,
+        diagnostics::metrics::Metrics,
+        partitions,
+        persistence::persister::PersisterKind,
+        polling_consumer::PollingConsumer,
+        session::Session,
+        traits::MainOps,
+        users::{permissioner::Permissioner, user::User},
+        utils::ptr::EternalPtr,
+    },
+    versioning::SemanticVersion,
+};
 use ahash::{AHashMap, AHashSet, HashMap};
 use builder::IggyShardBuilder;
 use dashmap::DashMap;
@@ -51,45 +87,13 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use tracing::{error, info, instrument, trace, warn};
+use tracing::{debug, error, info, instrument, trace, warn};
 use transmission::connector::{Receiver, ShardConnector, StopReceiver, StopSender};
-
-use crate::{
-    binary::handlers::messages::poll_messages_handler::IggyPollMetadata,
-    configs::server::ServerConfig,
-    http::http_server,
-    io::fs_utils,
-    shard::{
-        namespace::{IggyFullNamespace, IggyNamespace},
-        task_registry::TaskRegistry,
-        tasks::messages::spawn_shard_message_task,
-        transmission::{
-            event::ShardEvent,
-            frame::{ShardFrame, ShardResponse},
-            message::{ShardMessage, ShardRequest, ShardRequestPayload, ShardSendRequestResult},
-        },
-    },
-    shard_error, shard_info, shard_warn,
-    slab::{
-        streams::Streams,
-        traits_ext::{EntityComponentSystem, EntityMarker, Insert},
-    },
-    state::{
-        file::FileState, system::{StreamState, SystemState, UserState}, StateKind
-    },
-    streaming::{
-        clients::client_manager::ClientManager, diagnostics::metrics::Metrics, partitions, persistence::persister::PersisterKind, polling_consumer::PollingConsumer, session::Session, traits::MainOps, users::{permissioner::Permissioner, user::User}, utils::ptr::EternalPtr
-    },
-    tcp::tcp_server::spawn_tcp_server,
-    versioning::SemanticVersion,
-};
 
 pub const COMPONENT: &str = "SHARD";
 pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
 static USER_ID: AtomicU32 = AtomicU32::new(1);
-
-type Task = Pin<Box<dyn Future<Output = Result<(), IggyError>>>>;
 
 pub(crate) struct Shard {
     id: u16,
@@ -157,10 +161,10 @@ pub struct IggyShard {
     pub messages_receiver: Cell<Option<Receiver<ShardFrame>>>,
     pub(crate) stop_receiver: StopReceiver,
     pub(crate) stop_sender: StopSender,
-    pub(crate) task_registry: TaskRegistry,
     pub(crate) is_shutting_down: AtomicBool,
     pub(crate) tcp_bound_address: Cell<Option<SocketAddr>>,
     pub(crate) quic_bound_address: Cell<Option<SocketAddr>>,
+    pub(crate) task_registry: Rc<TaskRegistry>,
 }
 
 impl IggyShard {
@@ -174,78 +178,81 @@ impl IggyShard {
         Ok(())
     }
 
-    pub async fn run(self: &Rc<Self>, persister: Arc<PersisterKind>) -> Result<(), IggyError> {
-        // Workaround to ensure that the statistics are initialized before the server
-        // loads streams and starts accepting connections. This is necessary to
-        // have the correct statistics when the server starts.
-        let now = Instant::now();
-        self.get_stats().await?;
-        shard_info!(self.id, "Starting...");
-        self.init().await?;
-        // TODO: Fixme
-        //self.assert_init();
+    fn init_tasks(self: &Rc<Self>) {
+        continuous::spawn_message_pump(self.clone());
 
-        // Create all tasks (tcp listener, http listener, command processor, in the future also the background jobs).
-        let mut tasks: Vec<Task> = vec![Box::pin(spawn_shard_message_task(self.clone()))];
         if self.config.tcp.enabled {
-            tasks.push(Box::pin(spawn_tcp_server(self.clone())));
+            continuous::spawn_tcp_server(self.clone());
         }
 
         if self.config.http.enabled && self.id == 0 {
-            println!("Starting HTTP server on shard: {}", self.id);
-            tasks.push(Box::pin(http_server::start(
-                self.config.http.clone(),
-                persister,
-                self.clone(),
-            )));
+            continuous::spawn_http_server(self.clone());
         }
+
+        // JWT token cleaner task is spawned inside HTTP server because it needs `AppState`.
 
         if self.config.quic.enabled {
-            tasks.push(Box::pin(crate::quic::quic_server::span_quic_server(
-                self.clone(),
-            )));
+            continuous::spawn_quic_server(self.clone());
         }
 
-        tasks.push(Box::pin(
-            crate::channels::commands::clean_personal_access_tokens::clear_personal_access_tokens(
-                self.clone(),
-            ),
-        ));
-        // TOOD: Fixme, not always id 0 is the first shard.
-        if self.id == 0 {
-            tasks.push(Box::pin(
-                crate::channels::commands::print_sysinfo::print_sys_info(self.clone()),
-            ));
+        if self.config.message_saver.enabled {
+            periodic::spawn_message_saver(self.clone());
         }
 
-        tasks.push(Box::pin(
-            crate::channels::commands::verify_heartbeats::verify_heartbeats(self.clone()),
-        ));
-        tasks.push(Box::pin(
-            crate::channels::commands::save_messages::save_messages(self.clone()),
-        ));
+        if self.config.heartbeat.enabled {
+            periodic::spawn_heartbeat_verifier(self.clone());
+        }
 
+        if self.config.personal_access_token.cleaner.enabled {
+            periodic::spawn_personal_access_token_cleaner(self.clone());
+        }
+
+        if self
+            .config
+            .system
+            .logging
+            .sysinfo_print_interval
+            .as_micros()
+            > 0
+            && self.id == 0
+        {
+            periodic::spawn_sysinfo_printer(self.clone());
+        }
+    }
+
+    pub async fn run(self: &Rc<Self>) -> Result<(), IggyError> {
+        let now = Instant::now();
+
+        // Workaround to ensure that the statistics are initialized before the server
+        // loads streams and starts accepting connections. This is necessary to
+        // have the correct statistics when the server starts.
+        self.get_stats().await?;
+        shard_info!(self.id, "Starting...");
+        self.init().await?;
+
+        // TODO: Fixme
+        //self.assert_init();
+
+        self.init_tasks();
+        let (shutdown_complete_tx, shutdown_complete_rx) = async_channel::bounded(1);
         let stop_receiver = self.get_stop_receiver();
         let shard_for_shutdown = self.clone();
 
-        /*
+        // Spawn shutdown handler - only this task consumes the stop signal
         compio::runtime::spawn(async move {
             let _ = stop_receiver.recv().await;
-            info!("Shard {} received shutdown signal", shard_for_shutdown.id);
-
             let shutdown_success = shard_for_shutdown.trigger_shutdown().await;
             if !shutdown_success {
                 shard_error!(shard_for_shutdown.id, "shutdown timed out");
-            } else {
-                shard_info!(shard_for_shutdown.id, "shutdown completed successfully");
             }
-        });
-        */
+            let _ = shutdown_complete_tx.send(()).await;
+        })
+        .detach();
 
         let elapsed = now.elapsed();
         shard_info!(self.id, "Initialized in {} ms.", elapsed.as_millis());
-        let result = try_join_all(tasks).await;
-        result?;
+
+        shutdown_complete_rx.recv().await.ok();
         Ok(())
     }
 
@@ -352,8 +359,8 @@ impl IggyShard {
     #[instrument(skip_all, name = "trace_shutdown")]
     pub async fn trigger_shutdown(&self) -> bool {
         self.is_shutting_down.store(true, Ordering::SeqCst);
-        info!("Shard {} shutdown state set", self.id);
-        self.task_registry.shutdown_all(SHUTDOWN_TIMEOUT).await
+        debug!("Shard {} shutdown state set", self.id);
+        self.task_registry.graceful_shutdown(SHUTDOWN_TIMEOUT).await
     }
 
     pub fn get_available_shards_count(&self) -> u32 {
@@ -383,7 +390,13 @@ impl IggyShard {
                 let batch = self.maybe_encrypt_messages(batch)?;
                 let messages_count = batch.count();
                 self.streams2
-                    .append_messages(self.id, &self.config.system, &ns, batch)
+                    .append_messages(
+                        self.id,
+                        &self.config.system,
+                        &self.task_registry,
+                        &ns,
+                        batch,
+                    )
                     .await?;
                 self.metrics.increment_messages(messages_count as u64);
                 Ok(ShardResponse::SendMessages)

@@ -16,56 +16,76 @@
  * under the License.
  */
 
-use std::rc::Rc;
-
 use crate::binary::command::{ServerCommand, ServerCommandHandler};
 use crate::binary::sender::SenderKind;
 use crate::server_error::ConnectionError;
 use crate::shard::IggyShard;
+use crate::shard::task_registry::ShutdownToken;
 use crate::shard::transmission::event::ShardEvent;
 use crate::streaming::session::Session;
 use crate::{shard_debug, shard_info};
 use anyhow::anyhow;
 use compio_quic::{Connection, Endpoint, RecvStream, SendStream};
+use futures::FutureExt;
 use iggy_common::IggyError;
 use iggy_common::TransportProtocol;
+use std::rc::Rc;
 use tracing::{error, info, trace};
 
 const INITIAL_BYTES_LENGTH: usize = 4;
 
-pub async fn start(endpoint: Endpoint, shard: Rc<IggyShard>) -> Result<(), IggyError> {
-    info!("Starting QUIC listener for shard {}", shard.id);
+pub async fn start(
+    endpoint: Endpoint,
+    shard: Rc<IggyShard>,
+    shutdown: ShutdownToken,
+) -> Result<(), IggyError> {
+    loop {
+        let accept_future = endpoint.wait_incoming();
 
-    // Since the QUIC Endpoint is internally Arc-wrapped and can be shared,
-    // we only need one worker per shard rather than multiple workers per endpoint.
-    // This avoids the N×workers multiplication when multiple shards are used.
-    while let Some(incoming_conn) = endpoint.wait_incoming().await {
-        let remote_addr = incoming_conn.remote_address();
-        trace!("Incoming connection from client: {}", remote_addr);
-        let shard = shard.clone();
+        futures::select! {
+            _ = shutdown.wait().fuse() => {
+                shard_debug!(shard.id, "QUIC listener received shutdown signal, no longer accepting connections");
+                break;
+            }
+            incoming_conn = accept_future.fuse() => {
+                match incoming_conn {
+                    Some(incoming_conn) => {
+                        let remote_addr = incoming_conn.remote_address();
 
-        // Spawn each connection handler independently to maintain concurrency
-        compio::runtime::spawn(async move {
-            trace!("Accepting connection from {}", remote_addr);
-            match incoming_conn.await {
-                Ok(connection) => {
-                    trace!("Connection established from {}", remote_addr);
-                    if let Err(error) = handle_connection(connection, shard).await {
-                        error!("QUIC connection from {} has failed: {error}", remote_addr);
+                        if shard.is_shutting_down() {
+                            shard_info!(shard.id, "Rejecting new QUIC connection from {} during shutdown", remote_addr);
+                            continue;
+                        }
+
+                        trace!("Incoming connection from client: {}", remote_addr);
+                        let shard_for_conn = shard.clone();
+
+                        shard.task_registry.spawn_connection(async move {
+                            trace!("Accepting connection from {}", remote_addr);
+                            match incoming_conn.await {
+                                Ok(connection) => {
+                                    trace!("Connection established from {}", remote_addr);
+                                    if let Err(error) = handle_connection(connection, shard_for_conn).await {
+                                        error!("QUIC connection from {} has failed: {error}", remote_addr);
+                                    }
+                                }
+                                Err(error) => {
+                                    error!(
+                                        "Error when accepting incoming connection from {}: {:?}",
+                                        remote_addr, error
+                                    );
+                                }
+                            }
+                        });
+                    }
+                    None => {
+                        info!("QUIC endpoint closed for shard {}", shard.id);
+                        break;
                     }
                 }
-                Err(error) => {
-                    error!(
-                        "Error when accepting incoming connection from {}: {:?}",
-                        remote_addr, error
-                    );
-                }
             }
-        })
-        .detach();
+        }
     }
-
-    info!("QUIC listener for shard {} stopped", shard.id);
     Ok(())
 }
 
@@ -77,7 +97,6 @@ async fn handle_connection(
     info!("Client has connected: {address}");
     let session = shard.add_client(&address, TransportProtocol::Quic);
 
-    let session = shard.add_client(&address, TransportProtocol::Quic);
     let client_id = session.client_id;
     shard_debug!(
         shard.id,
@@ -93,19 +112,40 @@ async fn handle_connection(
         address,
         transport: TransportProtocol::Quic,
     };
-    let _responses = shard.broadcast_event_to_all_shards(event.into()).await;
 
-    while let Some(stream) = accept_stream(&connection, &shard, client_id).await? {
-        let shard = shard.clone();
-        let session = session.clone();
+    // TODO(hubcio): unused?
+    let _responses = shard.broadcast_event_to_all_shards(event).await;
 
-        let handle_stream_task = async move {
-            if let Err(err) = handle_stream(stream, shard, session).await {
-                error!("Error when handling QUIC stream: {:?}", err)
+    let conn_stop_receiver = shard.task_registry.add_connection(client_id);
+
+    loop {
+        futures::select! {
+            // Check for shutdown signal
+            _ = conn_stop_receiver.recv().fuse() => {
+                info!("QUIC connection {} shutting down gracefully", client_id);
+                break;
             }
-        };
-        let _handle = compio::runtime::spawn(handle_stream_task).detach();
+            // Accept new connection
+            stream_result = accept_stream(&connection, &shard, client_id).fuse() => {
+                match stream_result? {
+                    Some(stream) => {
+                        let shard_clone = shard.clone();
+                        let session_clone = session.clone();
+
+                        shard.task_registry.spawn_connection(async move {
+                            if let Err(err) = handle_stream(stream, shard_clone, session_clone).await {
+                                error!("Error when handling QUIC stream: {:?}", err)
+                            }
+                        });
+                    }
+                    None => break, // Connection closed
+                }
+            }
+        }
     }
+
+    shard.task_registry.remove_connection(&client_id);
+    info!("QUIC connection {} closed", client_id);
     Ok(())
 }
 

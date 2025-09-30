@@ -476,6 +476,8 @@ pub enum IggyError {
 
     #[error("Cannot bind to socket with addr: {0}")]
     CannotBindToSocket(String) = 12000,
+    #[error("Task execution timeout")]
+    TaskTimeout = 12001,
 }
 
 impl IggyError {

@@ -1,7 +1,3 @@
-use std::{rc::Rc, sync::Arc};
-
-use iggy_common::{Identifier, PollingStrategy};
-
 /* Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -27,6 +23,7 @@ use crate::{
     slab::partitions,
     streaming::{polling_consumer::PollingConsumer, segments::IggyMessagesBatchMut},
 };
+use iggy_common::Identifier;
 
 pub enum ShardSendRequestResult {
     // TODO: In the future we can add other variants, for example backpressure from the destination shard,

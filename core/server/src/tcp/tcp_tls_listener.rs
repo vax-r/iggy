@@ -19,6 +19,7 @@
 use crate::binary::sender::SenderKind;
 use crate::configs::tcp::TcpSocketConfig;
 use crate::shard::IggyShard;
+use crate::shard::task_registry::ShutdownToken;
 use crate::shard::transmission::event::ShardEvent;
 use crate::tcp::connection_handler::{handle_connection, handle_error};
 use crate::{shard_error, shard_info, shard_warn};
@@ -42,6 +43,7 @@ pub(crate) async fn start(
     mut addr: SocketAddr,
     config: &TcpSocketConfig,
     shard: Rc<IggyShard>,
+    shutdown: ShutdownToken,
 ) -> Result<(), IggyError> {
     //TODO: Fix me, this needs to take into account that first shard id potentially can be greater than 0.
     if shard.id != 0 && addr.port() == 0 {
@@ -149,7 +151,7 @@ pub(crate) async fn start(
         actual_addr
     );
 
-    accept_loop(server_name, listener, acceptor, shard).await
+    accept_loop(server_name, listener, acceptor, shard, shutdown).await
 }
 
 async fn create_listener(
@@ -188,22 +190,14 @@ async fn accept_loop(
     listener: TcpListener,
     acceptor: TlsAcceptor,
     shard: Rc<IggyShard>,
+    shutdown: ShutdownToken,
 ) -> Result<(), IggyError> {
     loop {
         let shard = shard.clone();
-        let shutdown_check = async {
-            loop {
-                if shard.is_shutting_down() {
-                    return;
-                }
-                compio::time::sleep(Duration::from_millis(100)).await;
-            }
-        };
-
         let accept_future = listener.accept();
         futures::select! {
-            _ = shutdown_check.fuse() => {
-                shard_info!(shard.id, "{} detected shutdown flag, no longer accepting connections", server_name);
+            _ = shutdown.wait().fuse() => {
+                shard_info!(shard.id, "{} received shutdown signal, no longer accepting connections", server_name);
                 break;
             }
             result = accept_future.fuse() => {
@@ -219,7 +213,9 @@ async fn accept_loop(
 
                         // Perform TLS handshake in a separate task to avoid blocking the accept loop
                         let task_shard = shard_clone.clone();
-                        task_shard.task_registry.spawn_tracked(async move {
+                        let registry = shard.task_registry.clone();
+                        let registry_clone = registry.clone();
+                        registry.spawn_connection(async move {
                             match acceptor.accept(stream).await {
                                 Ok(tls_stream) => {
                                     // TLS handshake successful, now create session
@@ -237,13 +233,13 @@ async fn accept_loop(
                                     let client_id = session.client_id;
                                     shard_info!(shard_clone.id, "Created new session: {}", session);
 
-                                    let conn_stop_receiver = shard_clone.task_registry.add_connection(client_id);
+                                    let conn_stop_receiver = registry_clone.add_connection(client_id);
                                     let shard_for_conn = shard_clone.clone();
                                     let mut sender = SenderKind::get_tcp_tls_sender(tls_stream);
                                     if let Err(error) = handle_connection(&session, &mut sender, &shard_for_conn, conn_stop_receiver).await {
                                         handle_error(error);
                                     }
-                                    shard_for_conn.task_registry.remove_connection(&client_id);
+                                    registry_clone.remove_connection(&client_id);
 
                                     if let Err(error) = sender.shutdown().await {
                                         shard_error!(shard.id, "Failed to shutdown TCP TLS stream for client: {}, address: {}. {}", client_id, address, error);

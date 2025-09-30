@@ -16,23 +16,12 @@
  * under the License.
  */
 
-pub mod diagnostics;
-pub mod error;
-pub mod http_server;
-mod http_shard_wrapper;
-pub mod jwt;
-mod mapper;
-pub mod metrics;
-pub mod shared;
+mod http_server;
+mod message_pump;
+mod quic_server;
+mod tcp_server;
 
-pub mod consumer_groups;
-pub mod consumer_offsets;
-pub mod messages;
-pub mod partitions;
-pub mod personal_access_tokens;
-pub mod streams;
-pub mod system;
-pub mod topics;
-pub mod users;
-
-pub const COMPONENT: &str = "HTTP";
+pub use http_server::spawn_http_server;
+pub use message_pump::spawn_message_pump;
+pub use quic_server::spawn_quic_server;
+pub use tcp_server::spawn_tcp_server;

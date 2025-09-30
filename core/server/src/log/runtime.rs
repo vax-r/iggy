@@ -1,7 +1,6 @@
-use std::{pin::Pin, task::Poll, time::Duration};
-
-use futures::{channel::mpsc, future::poll_fn, FutureExt, SinkExt, Stream, StreamExt};
+use futures::{FutureExt, SinkExt, Stream, StreamExt, channel::mpsc, future::poll_fn};
 use opentelemetry_sdk::runtime::{Runtime, RuntimeChannel, TrySend};
+use std::{pin::Pin, task::Poll, time::Duration};
 
 #[derive(Clone)]
 pub struct CompioRuntime;
@@ -17,6 +16,7 @@ impl Runtime for CompioRuntime {
         // "This is mainly used to run batch span processing in the background. Note, that the function
         // does not return a handle. OpenTelemetry will use a different way to wait for the future to
         // finish when the caller shuts down.""
+        // TODO(hubcio): investigate if we can use TaskRegistry API for task spawn
         compio::runtime::spawn(future).detach();
     }
 
@@ -34,17 +34,20 @@ impl<T> CompioSender<T> {
     pub fn new(sender: mpsc::UnboundedSender<T>) -> Self {
         Self { sender }
     }
-}   
+}
 
-// Safety: Since we use compio runtime which is single-threaded, or rather the Future: !Send + !Sync, 
+// Safety: Since we use compio runtime which is single-threaded, or rather the Future: !Send + !Sync,
 // we can implement those traits, to satisfy the trait bounds from `Runtime` and `RuntimeChannel` traits.
 unsafe impl<T> Send for CompioSender<T> {}
 unsafe impl<T> Sync for CompioSender<T> {}
 
-impl<T: std::fmt::Debug + Send> TrySend for CompioSender<T>  {
+impl<T: std::fmt::Debug + Send> TrySend for CompioSender<T> {
     type Message = T;
 
-    fn try_send(&self, item: Self::Message) -> Result<(), opentelemetry_sdk::runtime::TrySendError> {
+    fn try_send(
+        &self,
+        item: Self::Message,
+    ) -> Result<(), opentelemetry_sdk::runtime::TrySendError> {
         self.sender.unbounded_send(item).map_err(|_err| {
             // Unbounded channels can only fail if disconnected, never full
             opentelemetry_sdk::runtime::TrySendError::ChannelClosed
@@ -65,7 +68,10 @@ impl<T> CompioReceiver<T> {
 impl<T: std::fmt::Debug + Send> Stream for CompioReceiver<T> {
     type Item = T;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Option<Self::Item>> {
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
         self.receiver.poll_next_unpin(cx)
     }
 }

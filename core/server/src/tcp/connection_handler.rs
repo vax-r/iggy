@@ -42,6 +42,9 @@ pub(crate) async fn handle_connection(
     let mut code_buffer = BytesMut::with_capacity(INITIAL_BYTES_LENGTH);
     loop {
         let read_future = sender.read(length_buffer);
+        // TODO(hubcio): this futures::select! call is translated to epoll_wait syscall for every
+        // message, which adds around 100 us median latency. We could instead just call sender.shutdown()
+        // if some atomic bool is set, since this is all happenng within single thread.
         let (_, mut initial_buffer) = futures::select! {
             _ = stop_receiver.recv().fuse() => {
                 info!("Connection stop signal received for session: {}", session);

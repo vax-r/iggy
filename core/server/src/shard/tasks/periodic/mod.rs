@@ -16,23 +16,14 @@
  * under the License.
  */
 
-pub mod diagnostics;
-pub mod error;
-pub mod http_server;
-mod http_shard_wrapper;
-pub mod jwt;
-mod mapper;
-pub mod metrics;
-pub mod shared;
+mod heartbeat_verifier;
+mod jwt_token_cleaner;
+mod message_saver;
+mod personal_access_token_cleaner;
+mod sysinfo_printer;
 
-pub mod consumer_groups;
-pub mod consumer_offsets;
-pub mod messages;
-pub mod partitions;
-pub mod personal_access_tokens;
-pub mod streams;
-pub mod system;
-pub mod topics;
-pub mod users;
-
-pub const COMPONENT: &str = "HTTP";
+pub use heartbeat_verifier::spawn_heartbeat_verifier;
+pub use jwt_token_cleaner::spawn_jwt_token_cleaner;
+pub use message_saver::spawn_message_saver;
+pub use personal_access_token_cleaner::spawn_personal_access_token_cleaner;
+pub use sysinfo_printer::spawn_sysinfo_printer;

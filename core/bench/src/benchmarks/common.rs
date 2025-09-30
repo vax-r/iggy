@@ -79,7 +79,7 @@ pub async fn init_consumer_groups(
     login_root(&client).await;
     for i in 1..=cg_count {
         let consumer_group_id = CONSUMER_GROUP_BASE_ID + i;
-        let stream_name = format!("bench-stream-{}", i);
+        let stream_name = format!("bench-stream-{i}");
         let stream_id: Identifier = stream_name.as_str().try_into()?;
         let topic_id: Identifier = "topic-1".try_into()?;
         let consumer_group_name = format!("{CONSUMER_GROUP_NAME_PREFIX}-{consumer_group_id}");
@@ -136,7 +136,7 @@ pub fn build_producer_futures(
             };
 
             let stream_idx = 1 + ((producer_id - 1) % streams);
-            let stream_id = format!("bench-stream-{}", stream_idx);
+            let stream_id = format!("bench-stream-{stream_idx}");
 
             async move {
                 let producer = TypedBenchmarkProducer::new(
@@ -203,7 +203,7 @@ pub fn build_consumer_futures(
             } else {
                 consumer_id
             };
-            let stream_id = format!("bench-stream-{}", stream_idx);
+            let stream_id = format!("bench-stream-{stream_idx}");
             let consumer_group_id = if cg_count > 0 {
                 Some(CONSUMER_GROUP_BASE_ID + 1 + (consumer_id % cg_count))
             } else {
@@ -251,7 +251,7 @@ pub fn build_producing_consumers_futures(
             let client_factory_clone = client_factory.clone();
             let args_clone = args.clone();
             let stream_idx = 1 + ((actor_id - 1) % streams);
-            let stream_id = format!("bench-stream-{}", stream_idx);
+            let stream_id = format!("bench-stream-{stream_idx}");
 
             let send_finish_condition = BenchmarkFinishCondition::new(
                 &args,
@@ -329,7 +329,7 @@ pub fn build_producing_consumer_groups_futures(
             let client_factory_clone = client_factory.clone();
             let args_clone = args.clone();
             let stream_idx = 1 + ((actor_id - 1) % cg_count);
-            let stream_id = format!("bench-stream-{}", stream_idx);
+            let stream_id = format!("bench-stream-{stream_idx}");
 
             let should_produce = actor_id <= producers;
             let should_consume = actor_id <= consumers;

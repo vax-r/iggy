@@ -102,7 +102,7 @@ pub trait Benchmarkable: Send {
         login_root(&client).await;
         let streams = client.get_streams().await?;
         for i in 1..=number_of_streams {
-            let stream_name = format!("bench-stream-{}", i);
+            let stream_name = format!("bench-stream-{i}");
             let stream_id: Identifier = stream_name.as_str().try_into()?;
             if streams.iter().all(|s| s.name != stream_name) {
                 info!("Creating the test stream '{}'", stream_name);
@@ -141,11 +141,10 @@ pub trait Benchmarkable: Send {
         login_root(&client).await;
         let streams = client.get_streams().await?;
         for i in 1..=number_of_streams {
-            let stream_name = format!("bench-stream-{}", i);
+            let stream_name = format!("bench-stream-{i}");
             if streams.iter().all(|s| s.name != stream_name) {
                 return Err(IggyError::ResourceNotFound(format!(
-                    "Streams for testing are not properly initialized. Stream '{}' is missing.",
-                    stream_name
+                    "Streams for testing are not properly initialized. Stream '{stream_name}' is missing."
                 )));
             }
         }

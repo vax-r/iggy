@@ -21,6 +21,7 @@ use iggy::prelude::IggyMessage;
 use iggy_common::{CompressionAlgorithm, Identifier, IggyError, IggyExpiry, MaxTopicSize};
 use server::{
     configs::system::SystemConfig,
+    shard::task_registry::TaskRegistry,
     slab::{streams::Streams, traits_ext::EntityMarker},
     streaming::{
         self,
@@ -30,6 +31,7 @@ use server::{
         topics::{storage2::create_topic_file_hierarchy, topic2},
     },
 };
+use std::rc::Rc;
 
 mod common;
 mod get_by_offset;
@@ -41,6 +43,7 @@ struct BootstrapResult {
     stream_id: Identifier,
     topic_id: Identifier,
     partition_id: usize,
+    task_registry: Rc<TaskRegistry>,
 }
 
 async fn bootstrap_test_environment(
@@ -118,11 +121,15 @@ async fn bootstrap_test_environment(
         });
     }
 
+    // Create a test task registry
+    let task_registry = Rc::new(TaskRegistry::new(shard_id));
+
     Ok(BootstrapResult {
         streams,
         stream_id,
         topic_id,
         partition_id: 0,
+        task_registry,
     })
 }
 

@@ -33,7 +33,6 @@ use iggy_common::Identifier;
 use iggy_common::Validatable;
 use iggy_common::create_partitions::CreatePartitions;
 use iggy_common::delete_partitions::DeletePartitions;
-use iggy_common::locking::IggyRwLockFn;
 use send_wrapper::SendWrapper;
 use std::sync::Arc;
 use tracing::instrument;

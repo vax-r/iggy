@@ -16,26 +16,22 @@
  * under the License.
  */
 
-use crate::http::shared::AppState;
-use iggy_common::IggyTimestamp;
-use std::{sync::Arc, time::Duration};
-use tracing::{error, trace};
+use crate::shard::IggyShard;
+use crate::shard::task_registry::ShutdownToken;
+use crate::tcp::tcp_server;
+use iggy_common::IggyError;
+use std::rc::Rc;
 
-pub fn start_expired_tokens_cleaner(app_state: Arc<AppState>) {
-    compio::runtime::spawn(async move {
-        let mut interval_timer = compio::time::interval(Duration::from_secs(300));
-        loop {
-            interval_timer.tick().await;
-            trace!("Deleting expired tokens...");
-            let now = IggyTimestamp::now().to_secs();
-            app_state
-                .jwt_manager
-                .delete_expired_revoked_tokens(now)
-                .await
-                .unwrap_or_else(|err| {
-                    error!("Failed to delete expired revoked access tokens. Error: {err}");
-                });
-        }
-    })
-    .detach();
+pub fn spawn_tcp_server(shard: Rc<IggyShard>) {
+    let shard_clone = shard.clone();
+    shard
+        .task_registry
+        .continuous("tcp_server")
+        .critical(true)
+        .run(move |shutdown| tcp_server_task(shard_clone, shutdown))
+        .spawn();
+}
+
+async fn tcp_server_task(shard: Rc<IggyShard>, shutdown: ShutdownToken) -> Result<(), IggyError> {
+    tcp_server::spawn_tcp_server(shard, shutdown).await
 }

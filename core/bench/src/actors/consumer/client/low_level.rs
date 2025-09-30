@@ -109,7 +109,7 @@ impl ConsumerClient for LowLevelConsumerClient {
         }
 
         Ok(Some(BatchMetrics {
-            messages: messages_count as u32,
+            messages: messages_count.try_into().unwrap(),
             user_data_bytes: user_bytes,
             total_bytes,
             latency,

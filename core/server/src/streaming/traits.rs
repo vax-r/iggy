@@ -1,4 +1,7 @@
 use crate::configs::system::SystemConfig;
+use crate::shard::task_registry::TaskRegistry;
+use std::future::Future;
+use std::rc::Rc;
 
 // TODO: Major revision of this trait.
 pub trait MainOps {
@@ -13,6 +16,7 @@ pub trait MainOps {
         &self,
         shard_id: u16,
         config: &SystemConfig,
+        registry: &Rc<TaskRegistry>,
         ns: &Self::Namespace,
         input: Self::In,
     ) -> impl Future<Output = Result<(), Self::Error>>;

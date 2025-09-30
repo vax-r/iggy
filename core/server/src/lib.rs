@@ -31,7 +31,6 @@ compile_error!("iggy-server doesn't support windows.");
 pub mod args;
 pub mod binary;
 pub mod bootstrap;
-pub mod channels;
 pub(crate) mod compat;
 pub mod configs;
 pub mod http;

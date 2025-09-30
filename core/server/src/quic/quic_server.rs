@@ -35,10 +35,14 @@ use crate::configs::quic::QuicConfig;
 use crate::quic::{COMPONENT, listener, quic_socket};
 use crate::server_error::QuicError;
 use crate::shard::IggyShard;
+use crate::shard::task_registry::ShutdownToken;
 
 /// Starts the QUIC server.
 /// Returns the address the server is listening on.
-pub async fn span_quic_server(shard: Rc<IggyShard>) -> Result<(), iggy_common::IggyError> {
+pub async fn spawn_quic_server(
+    shard: Rc<IggyShard>,
+    shutdown: ShutdownToken,
+) -> Result<(), iggy_common::IggyError> {
     // Ensure rustls crypto provider is installed (thread-safe, idempotent)
     if rustls::crypto::CryptoProvider::get_default().is_none() {
         if let Err(e) = default_provider().install_default() {
@@ -102,7 +106,7 @@ pub async fn span_quic_server(shard: Rc<IggyShard>) -> Result<(), iggy_common::I
         shard.id, actual_addr
     );
     shard.quic_bound_address.set(Some(actual_addr));
-    listener::start(endpoint, shard).await
+    listener::start(endpoint, shard, shutdown).await
 }
 
 fn configure_quic(config: &QuicConfig) -> Result<ServerConfig, QuicError> {

@@ -17,6 +17,7 @@
  */
 
 use crate::shard::IggyShard;
+use crate::shard::task_registry::ShutdownToken;
 use crate::shard_info;
 use crate::tcp::{tcp_listener, tcp_tls_listener};
 use iggy_common::IggyError;
@@ -24,7 +25,10 @@ use std::net::SocketAddr;
 use std::rc::Rc;
 
 /// Starts the TCP server.
-pub async fn spawn_tcp_server(shard: Rc<IggyShard>) -> Result<(), IggyError> {
+pub async fn spawn_tcp_server(
+    shard: Rc<IggyShard>,
+    shutdown: ShutdownToken,
+) -> Result<(), IggyError> {
     let server_name = if shard.config.tcp.tls.enabled {
         "Iggy TCP TLS"
     } else {
@@ -41,8 +45,13 @@ pub async fn spawn_tcp_server(shard: Rc<IggyShard>) -> Result<(), IggyError> {
     shard_info!(shard.id, "Initializing {} server...", server_name);
 
     match shard.config.tcp.tls.enabled {
-        true => tcp_tls_listener::start(server_name, addr, socket_config, shard.clone()).await?,
-        false => tcp_listener::start(server_name, addr, socket_config, shard.clone()).await?,
+        true => {
+            tcp_tls_listener::start(server_name, addr, socket_config, shard.clone(), shutdown)
+                .await?
+        }
+        false => {
+            tcp_listener::start(server_name, addr, socket_config, shard.clone(), shutdown).await?
+        }
     };
 
     Ok(())

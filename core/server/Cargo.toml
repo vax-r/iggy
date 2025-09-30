@@ -34,7 +34,6 @@ path = "src/main.rs"
 
 [features]
 default = ["mimalloc"]
-tokio-console = ["dep:console-subscriber", "tokio/tracing"]
 disable-mimalloc = []
 mimalloc = ["dep:mimalloc"]
 

@@ -124,6 +124,7 @@ async fn test_get_messages_by_timestamp(
     let stream_identifier = bootstrap_result.stream_id;
     let topic_identifier = bootstrap_result.topic_id;
     let partition_id = bootstrap_result.partition_id;
+    let task_registry = bootstrap_result.task_registry;
 
     // Create namespace for MainOps calls
     let namespace = IggyFullNamespace::new(
@@ -200,7 +201,7 @@ async fn test_get_messages_by_timestamp(
         let batch = IggyMessagesBatchMut::from_messages(messages_slice_to_append, messages_size);
         assert_eq!(batch.count(), batch_len);
         streams
-            .append_messages(shard_id as u16, &config, &namespace, batch)
+            .append_messages(shard_id as u16, &config, &task_registry, &namespace, batch)
             .await
             .unwrap();
 
