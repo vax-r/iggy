@@ -3,7 +3,7 @@ use crate::{
         Keyed, consumer_groups,
         traits_ext::{
             Borrow, ComponentsById, Delete, EntityComponentSystem, EntityComponentSystemMut,
-            EntityMarker, Insert, IntoComponents, IntoComponentsById,
+            Insert, IntoComponents,
         },
     },
     streaming::topics::consumer_group2::{self, ConsumerGroupRef, ConsumerGroupRefMut},
@@ -81,13 +81,6 @@ impl EntityComponentSystem<Borrow> for ConsumerGroups {
     {
         f(self.into())
     }
-
-    fn with_components_async<O, F>(&self, f: F) -> impl Future<Output = O>
-    where
-        F: for<'a> AsyncFnOnce(Self::EntityComponents<'a>) -> O,
-    {
-        f(self.into())
-    }
 }
 
 impl EntityComponentSystemMut for ConsumerGroups {
@@ -145,15 +138,6 @@ impl ConsumerGroups {
     ) -> T {
         let id = self.get_index(identifier);
         self.with_components_by_id_mut(id, |components| f(components))
-    }
-
-    pub fn with_consumer_group_by_id_async<T>(
-        &self,
-        identifier: &Identifier,
-        f: impl AsyncFnOnce(ComponentsById<ConsumerGroupRef>) -> T,
-    ) -> impl Future<Output = T> {
-        let id = self.get_index(identifier);
-        self.with_components_by_id_async(id, async |components| f(components).await)
     }
 }
 

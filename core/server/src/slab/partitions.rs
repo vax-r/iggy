@@ -1,7 +1,7 @@
 use crate::{
     slab::traits_ext::{
         Borrow, ComponentsById, Delete, EntityComponentSystem, EntityComponentSystemMut, Insert,
-        IntoComponents, IntoComponentsById,
+        IntoComponents,
     },
     streaming::{
         deduplication::message_deduplicator::MessageDeduplicator,
@@ -17,10 +17,7 @@ use crate::{
     },
 };
 use slab::Slab;
-use std::{
-    future::Future,
-    sync::{Arc, atomic::AtomicU64},
-};
+use std::sync::{Arc, atomic::AtomicU64};
 
 // TODO: This could be upper limit of partitions per topic, use that value to validate instead of whathever this thing is in `common` crate.
 pub const PARTITIONS_CAPACITY: usize = 16384;
@@ -30,7 +27,7 @@ pub type ContainerId = usize;
 pub struct Partitions {
     root: Slab<partition2::PartitionRoot>,
     stats: Slab<Arc<PartitionStats>>,
-    message_deduplicator: Slab<Option<MessageDeduplicator>>,
+    message_deduplicator: Slab<Option<Arc<MessageDeduplicator>>>,
     offset: Slab<Arc<AtomicU64>>,
 
     consumer_offset: Slab<Arc<ConsumerOffsets>>,
@@ -168,12 +165,6 @@ impl EntityComponentSystem<Borrow> for Partitions {
         f(self.into())
     }
 
-    fn with_components_async<O, F>(&self, f: F) -> impl Future<Output = O>
-    where
-        F: for<'a> AsyncFnOnce(Self::EntityComponents<'a>) -> O,
-    {
-        f(self.into())
-    }
 }
 
 impl EntityComponentSystemMut for Partitions {
@@ -230,11 +221,4 @@ impl Partitions {
         self.with_components_by_id_mut(id, |components| f(components))
     }
 
-    pub fn with_partition_by_id_async<T>(
-        &self,
-        id: ContainerId,
-        f: impl AsyncFnOnce(ComponentsById<PartitionRef>) -> T,
-    ) -> impl Future<Output = T> {
-        self.with_components_by_id_async(id, async move |components| f(components).await)
-    }
 }
