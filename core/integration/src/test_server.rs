@@ -16,6 +16,15 @@
  * under the License.
  */
 
+use assert_cmd::prelude::CommandCargoExt;
+use async_trait::async_trait;
+use derive_more::Display;
+use futures::executor::block_on;
+use iggy::prelude::UserStatus::Active;
+use iggy::prelude::*;
+use iggy_common::TransportProtocol;
+use rand::Rng;
+use server::configs::config_provider::{ConfigProvider, FileConfigProvider};
 use std::collections::HashMap;
 use std::fs;
 use std::fs::{File, OpenOptions};
@@ -23,19 +32,9 @@ use std::io::Write;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::thread::{panicking, sleep};
+use std::thread::{available_parallelism, panicking, sleep};
 use std::time::Duration;
-
-use assert_cmd::prelude::CommandCargoExt;
-use async_trait::async_trait;
-use derive_more::Display;
-use futures::executor::block_on;
-use iggy_common::TransportProtocol;
 use uuid::Uuid;
-
-use iggy::prelude::UserStatus::Active;
-use iggy::prelude::*;
-use server::configs::config_provider::{ConfigProvider, FileConfigProvider};
 
 pub const SYSTEM_PATH_ENV_VAR: &str = "IGGY_SYSTEM_PATH";
 pub const TEST_VERBOSITY_ENV_VAR: &str = "IGGY_TEST_VERBOSE";
@@ -98,6 +97,28 @@ impl TestServer {
                 envs.insert(key, value);
             }
         }
+
+        // Randomly select 4 CPU cores to reduce interference between parallel tests
+        let cpu_allocation = match available_parallelism() {
+            Ok(parallelism) => {
+                let available_cpus = parallelism.get();
+                if available_cpus >= 4 {
+                    let mut rng = rand::thread_rng();
+                    let max_start = available_cpus - 4;
+                    let start = rng.gen_range(0..=max_start);
+                    let end = start + 4;
+                    format!("{}..{}", start, end)
+                } else {
+                    "all".to_string()
+                }
+            }
+            Err(_) => "0..4".to_string(),
+        };
+
+        envs.insert(
+            "IGGY_SYSTEM_SHARDING_CPU_ALLOCATION".to_string(),
+            cpu_allocation,
+        );
 
         if ip_kind == IpAddrKind::V6 {
             envs.insert(IPV6_ENV_VAR.to_string(), "true".to_string());
@@ -330,6 +351,35 @@ impl TestServer {
                 }
                 match file_config_provider.load_config().await {
                     Ok(config) => {
+                        // Verify config contains fresh addresses, not stale defaults
+                        // Default ports: TCP=8090, HTTP=3000, QUIC=8080
+                        let tcp_port: u16 = config
+                            .tcp
+                            .address
+                            .split(':')
+                            .nth(1)
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0);
+                        let http_port: u16 = config
+                            .http
+                            .address
+                            .split(':')
+                            .nth(1)
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0);
+                        let quic_port: u16 = config
+                            .quic
+                            .address
+                            .split(':')
+                            .nth(1)
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0);
+
+                        if tcp_port == 8090 || http_port == 3000 || quic_port == 8080 {
+                            sleep(Duration::from_millis(SLEEP_INTERVAL_MS));
+                            continue;
+                        }
+
                         loaded_config = Some(config);
                         break;
                     }
@@ -340,17 +390,26 @@ impl TestServer {
         });
 
         if let Some(config) = config {
-            self.server_addrs.push(ServerProtocolAddr::QuicUdp(
-                config.quic.address.parse().unwrap(),
-            ));
+            let quic_addr: SocketAddr = config.quic.address.parse().unwrap();
+            if quic_addr.port() == 0 {
+                panic!("Quic address port is 0!");
+            }
 
-            self.server_addrs.push(ServerProtocolAddr::RawTcp(
-                config.tcp.address.parse().unwrap(),
-            ));
+            let tcp_addr: SocketAddr = config.tcp.address.parse().unwrap();
+            if tcp_addr.port() == 0 {
+                panic!("Tcp address port is 0!");
+            }
 
-            self.server_addrs.push(ServerProtocolAddr::HttpTcp(
-                config.http.address.parse().unwrap(),
-            ));
+            let http_addr: SocketAddr = config.http.address.parse().unwrap();
+            if http_addr.port() == 0 {
+                panic!("Http address port is 0!");
+            }
+
+            self.server_addrs
+                .push(ServerProtocolAddr::QuicUdp(quic_addr));
+            self.server_addrs.push(ServerProtocolAddr::RawTcp(tcp_addr));
+            self.server_addrs
+                .push(ServerProtocolAddr::HttpTcp(http_addr));
         } else {
             panic!(
                 "Failed to load config from file {config_path} in {MAX_PORT_WAIT_DURATION_S} s!"

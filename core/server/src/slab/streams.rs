@@ -381,7 +381,10 @@ impl MainOps for Streams {
                 };
 
                 let Some(consumer_offset) = consumer_offset else {
-                    return Err(IggyError::ConsumerOffsetNotFound(consumer_id));
+                    let batches = self
+                        .get_messages_by_offset(stream_id, topic_id, partition_id, 0, count)
+                        .await?;
+                    return Ok((metadata, batches));
                 };
                 let offset = consumer_offset + 1;
                 trace!(
@@ -607,6 +610,10 @@ impl Streams {
         let mut current_offset = offset;
 
         for idx in range {
+            if remaining_count == 0 {
+                break;
+            }
+
             let (segment_start_offset, segment_end_offset) = self.with_partition_by_id(
                 stream_id,
                 topic_id,
@@ -658,10 +665,6 @@ impl Streams {
             }
 
             batches.add_batch_set(messages);
-
-            if remaining_count == 0 {
-                break;
-            }
         }
 
         Ok(batches)
@@ -890,6 +893,10 @@ impl Streams {
         let mut batches = IggyMessagesBatchSet::empty();
 
         for idx in range {
+            if remaining_count == 0 {
+                break;
+            }
+
             let segment_end_timestamp = self.with_partition_by_id(
                 stream_id,
                 topic_id,
@@ -922,10 +929,6 @@ impl Streams {
 
             remaining_count = remaining_count.saturating_sub(messages_count);
             batches.add_batch_set(messages);
-
-            if remaining_count == 0 {
-                break;
-            }
         }
 
         Ok(batches)

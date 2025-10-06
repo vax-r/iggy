@@ -63,13 +63,14 @@ use crate::{
 };
 use ahash::{AHashMap, AHashSet, HashMap};
 use builder::IggyShardBuilder;
+use compio::io::AsyncWriteAtExt;
 use dashmap::DashMap;
 use error_set::ErrContext;
 use futures::future::try_join_all;
 use hash32::{Hasher, Murmur3Hasher};
 use iggy_common::{
-    EncryptorKind, IdKind, Identifier, IggyError, IggyTimestamp, Permissions, PollingKind, UserId,
-    UserStatus,
+    EncryptorKind, IdKind, Identifier, IggyError, IggyTimestamp, Permissions, PollingKind,
+    TransportProtocol, UserId, UserStatus,
     defaults::{DEFAULT_ROOT_PASSWORD, DEFAULT_ROOT_USERNAME},
     locking::IggyRwLockFn,
 };
@@ -164,6 +165,9 @@ pub struct IggyShard {
     pub(crate) is_shutting_down: AtomicBool,
     pub(crate) tcp_bound_address: Cell<Option<SocketAddr>>,
     pub(crate) quic_bound_address: Cell<Option<SocketAddr>>,
+    pub(crate) http_bound_address: Cell<Option<SocketAddr>>,
+    config_writer_notify: async_channel::Sender<()>,
+    config_writer_receiver: async_channel::Receiver<()>,
     pub(crate) task_registry: Rc<TaskRegistry>,
 }
 
@@ -180,6 +184,13 @@ impl IggyShard {
 
     fn init_tasks(self: &Rc<Self>) {
         continuous::spawn_message_pump(self.clone());
+
+        // Spawn config writer task on shard 0 if we need to wait for bound addresses
+        if self.id == 0
+            && (self.config.tcp.enabled || self.config.quic.enabled || self.config.http.enabled)
+        {
+            self.spawn_config_writer_task();
+        }
 
         if self.config.tcp.enabled {
             continuous::spawn_tcp_server(self.clone());
@@ -218,6 +229,106 @@ impl IggyShard {
         {
             periodic::spawn_sysinfo_printer(self.clone());
         }
+    }
+
+    fn spawn_config_writer_task(self: &Rc<Self>) {
+        let shard = self.clone();
+        let tcp_enabled = self.config.tcp.enabled;
+        let quic_enabled = self.config.quic.enabled;
+        let http_enabled = self.config.http.enabled;
+
+        let notify_receiver = shard.config_writer_receiver.clone();
+
+        self.task_registry
+            .oneshot("config_writer")
+            .critical(false)
+            .run(move |_shutdown| async move {
+                // Wait for notifications until all servers have bound
+                loop {
+                    notify_receiver
+                        .recv()
+                        .await
+                        .map_err(|_| IggyError::CannotWriteToFile)
+                        .with_error_context(|_| {
+                            "config_writer: notification channel closed before all servers bound"
+                        })?;
+
+                    let tcp_ready = !tcp_enabled || shard.tcp_bound_address.get().is_some();
+                    let quic_ready = !quic_enabled || shard.quic_bound_address.get().is_some();
+                    let http_ready = !http_enabled || shard.http_bound_address.get().is_some();
+
+                    if tcp_ready && quic_ready && http_ready {
+                        break;
+                    }
+                }
+
+                let mut current_config = shard.config.clone();
+
+                let tcp_addr = shard.tcp_bound_address.get();
+                let quic_addr = shard.quic_bound_address.get();
+                let http_addr = shard.http_bound_address.get();
+
+                shard_info!(
+                    shard.id,
+                    "Config writer: TCP addr = {:?}, QUIC addr = {:?}, HTTP addr = {:?}",
+                    tcp_addr,
+                    quic_addr,
+                    http_addr
+                );
+
+                if let Some(tcp_addr) = tcp_addr {
+                    current_config.tcp.address = tcp_addr.to_string();
+                }
+
+                if let Some(quic_addr) = quic_addr {
+                    current_config.quic.address = quic_addr.to_string();
+                }
+
+                if let Some(http_addr) = http_addr {
+                    current_config.http.address = http_addr.to_string();
+                }
+
+                let runtime_path = current_config.system.get_runtime_path();
+                let config_path = format!("{runtime_path}/current_config.toml");
+                let content = toml::to_string(&current_config)
+                    .map_err(|_| IggyError::CannotWriteToFile)
+                    .with_error_context(|_| "config_writer: cannot serialize current_config")?;
+
+                let mut file = compio::fs::OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(&config_path)
+                    .await
+                    .map_err(|_| IggyError::CannotWriteToFile)
+                    .with_error_context(|_| {
+                        format!("config_writer: failed to open current config at {config_path}")
+                    })?;
+
+                file.write_all_at(content.into_bytes(), 0)
+                    .await
+                    .0
+                    .map_err(|_| IggyError::CannotWriteToFile)
+                    .with_error_context(|_| {
+                        format!("config_writer: failed to write current config to {config_path}")
+                    })?;
+
+                file.sync_all()
+                    .await
+                    .map_err(|_| IggyError::CannotWriteToFile)
+                    .with_error_context(|_| {
+                        format!("config_writer: failed to fsync current config to {config_path}")
+                    })?;
+
+                shard_info!(
+                    shard.id,
+                    "Current config written and synced to: {} with all bound addresses",
+                    config_path
+                );
+
+                Ok(())
+            })
+            .spawn();
     }
 
     pub async fn run(self: &Rc<Self>) -> Result<(), IggyError> {
@@ -481,7 +592,7 @@ impl IggyShard {
                             partition_id,
                             |(_, _, _, offset, _, _, _)| {
                                 let current_offset = offset.load(Ordering::Relaxed);
-                                let mut requested_count = 0;
+                                let mut requested_count = count as u64;
                                 if requested_count > current_offset + 1 {
                                     requested_count = current_offset + 1
                                 }
@@ -530,25 +641,38 @@ impl IggyShard {
                             ),
                         };
 
-                        let Some(consumer_offset) = consumer_offset else {
-                            return Err(IggyError::ConsumerOffsetNotFound(consumer_id));
+                        let batches = if consumer_offset.is_none() {
+                            let batches = self
+                                .streams2
+                                .get_messages_by_offset(
+                                    &stream_id,
+                                    &topic_id,
+                                    partition_id,
+                                    0,
+                                    count,
+                                )
+                                .await?;
+                            Ok(batches)
+                        } else {
+                            let consumer_offset = consumer_offset.unwrap();
+                            let offset = consumer_offset + 1;
+                            trace!(
+                                "Getting next messages for consumer id: {} for partition: {} from offset: {}...",
+                                consumer_id, partition_id, offset
+                            );
+                            let batches = self
+                                .streams2
+                                .get_messages_by_offset(
+                                    &stream_id,
+                                    &topic_id,
+                                    partition_id,
+                                    offset,
+                                    count,
+                                )
+                                .await?;
+                            Ok(batches)
                         };
-                        let offset = consumer_offset + 1;
-                        trace!(
-                            "Getting next messages for consumer id: {} for partition: {} from offset: {}...",
-                            consumer_id, partition_id, offset
-                        );
-                        let batches = self
-                            .streams2
-                            .get_messages_by_offset(
-                                &stream_id,
-                                &topic_id,
-                                partition_id,
-                                offset,
-                                count,
-                            )
-                            .await?;
-                        Ok(batches)
+                        batches
                     }
                 }?;
 
@@ -632,7 +756,7 @@ impl IggyShard {
         }
     }
 
-    async fn handle_event(&self, event: ShardEvent) -> Result<(), IggyError> {
+    pub(crate) async fn handle_event(&self, event: ShardEvent) -> Result<(), IggyError> {
         match event {
             ShardEvent::LoginUser {
                 client_id,
@@ -736,9 +860,37 @@ impl IggyShard {
                 self.update_permissions_bypass_auth(&user_id, permissions.to_owned())?;
                 Ok(())
             }
-            ShardEvent::TcpBound { address } => {
-                info!("Received TcpBound event with address: {}", address);
-                self.tcp_bound_address.set(Some(address));
+            ShardEvent::AddressBound { protocol, address } => {
+                shard_info!(
+                    self.id,
+                    "Received AddressBound event for {:?} with address: {}",
+                    protocol,
+                    address
+                );
+                match protocol {
+                    TransportProtocol::Tcp => {
+                        self.tcp_bound_address.set(Some(address));
+                        // Notify config writer that a server has bound
+                        let _ = self.config_writer_notify.try_send(());
+                    }
+                    TransportProtocol::Quic => {
+                        self.quic_bound_address.set(Some(address));
+                        // Notify config writer that a server has bound
+                        let _ = self.config_writer_notify.try_send(());
+                    }
+                    TransportProtocol::Http => {
+                        self.http_bound_address.set(Some(address));
+                        // Notify config writer that a server has bound
+                        let _ = self.config_writer_notify.try_send(());
+                    }
+                    _ => {
+                        shard_warn!(
+                            self.id,
+                            "Received AddressBound event for unsupported protocol: {:?}",
+                            protocol
+                        );
+                    }
+                }
                 Ok(())
             }
             ShardEvent::CreatedStream2 { id, stream } => {
@@ -1017,6 +1169,7 @@ impl IggyShard {
                 // TODO: Fixme, maybe we should send response_sender
                 // and propagate errors back.
                 let event = event.clone();
+                /*
                 if matches!(
                     &event,
                     ShardEvent::CreatedStream2 { .. }
@@ -1030,13 +1183,16 @@ impl IggyShard {
                         | ShardEvent::CreatedPersonalAccessToken { .. }
                         | ShardEvent::DeletedConsumerGroup2 { .. }
                 ) {
-                    let (sender, receiver) = async_channel::bounded(1);
-                    conn.send(ShardFrame::new(event.into(), Some(sender.clone())));
-                    Some(receiver.clone())
+                */
+                let (sender, receiver) = async_channel::bounded(1);
+                conn.send(ShardFrame::new(event.into(), Some(sender.clone())));
+                Some(receiver.clone())
+                /*
                 } else {
                     conn.send(ShardFrame::new(event.into(), None));
                     None
                 }
+                */
             })
         {
             match maybe_receiver {
