@@ -16,8 +16,6 @@
  * under the License.
  */
 
-use bytes::Bytes;
-use iggy::prelude::IggyMessage;
 use iggy_common::{CompressionAlgorithm, Identifier, IggyError, IggyExpiry, MaxTopicSize};
 use server::{
     configs::system::SystemConfig,
@@ -59,7 +57,7 @@ async fn bootstrap_test_environment(
     let streams = Streams::default();
     // Create stream together with its dirs
     let stream = stream2::create_and_insert_stream_mem(&streams, stream_name);
-    create_stream_file_hierarchy(shard_id, stream.id(), &config).await?;
+    create_stream_file_hierarchy(shard_id, stream.id(), config).await?;
     // Create topic together with its dirs
     let stream_id = Identifier::numeric(stream.id() as u32).unwrap();
     let parent_stats = streams.with_stream_by_id(&stream_id, |(_, stats)| stats.clone());
@@ -76,7 +74,7 @@ async fn bootstrap_test_environment(
         max_topic_size,
         parent_stats,
     );
-    create_topic_file_hierarchy(shard_id, stream.id(), topic.id(), &config).await?;
+    create_topic_file_hierarchy(shard_id, stream.id(), topic.id(), config).await?;
     // Create partition together with its dirs
     let topic_id = Identifier::numeric(topic.id() as u32).unwrap();
     let parent_stats = streams.with_topic_by_id(
@@ -93,7 +91,7 @@ async fn bootstrap_test_environment(
         config,
     );
     for partition in partitions {
-        create_partition_file_hierarchy(shard_id, stream.id(), topic.id(), partition.id(), &config)
+        create_partition_file_hierarchy(shard_id, stream.id(), topic.id(), partition.id(), config)
             .await?;
 
         // Open the log
@@ -106,7 +104,7 @@ async fn bootstrap_test_environment(
         let messages_size = 0;
         let indexes_size = 0;
         let storage = create_segment_storage(
-            &config,
+            config,
             stream.id(),
             topic.id(),
             partition.id(),
@@ -131,24 +129,4 @@ async fn bootstrap_test_environment(
         partition_id: 0,
         task_registry,
     })
-}
-
-fn create_messages() -> Vec<IggyMessage> {
-    vec![
-        create_message(1, "message 1"),
-        create_message(2, "message 2"),
-        create_message(3, "message 3"),
-        create_message(4, "message 3.2"),
-        create_message(5, "message 1.2"),
-        create_message(6, "message 3.3"),
-    ]
-}
-
-fn create_message(id: u128, payload: &str) -> IggyMessage {
-    let payload = Bytes::from(payload.to_string());
-    IggyMessage::builder()
-        .id(id)
-        .payload(payload)
-        .build()
-        .expect("Failed to create message with valid payload and headers")
 }

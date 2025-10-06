@@ -135,7 +135,8 @@ pub async fn start_http_server(
         let service = app.into_make_service_with_connect_info::<CompioSocketAddr>();
 
         // Spawn the server in a task so we can handle shutdown
-        let server_task =
+        // TODO(hubcio): investigate if we can use TaskRegistry here
+        let _server_task =
             compio::runtime::spawn(async move { cyper_axum::serve(listener, service).await });
 
         // Wait for shutdown signal

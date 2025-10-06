@@ -66,15 +66,14 @@ pub async fn delete_topic_from_disk(
     let partitions = topic.root_mut().partitions_mut();
     for id in ids {
         let partition = partitions.delete(id);
-        let (root, stats, _, _, _, _, mut log) = partition.into_components();
+        let (root, stats, _, _, _, _, _log) = partition.into_components();
         let partition_id = root.id();
         delete_partitions_from_disk(
             shard_id,
             stream_id,
             topic_id,
             partition_id,
-            &mut log,
-            &config,
+            config,
         )
         .await?;
         messages_count += stats.messages_count_inconsistent();

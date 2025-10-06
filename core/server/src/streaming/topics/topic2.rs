@@ -3,7 +3,7 @@ use crate::slab::streams::Streams;
 use crate::slab::topics;
 use crate::slab::traits_ext::{EntityMarker, InsertCell, IntoComponents, IntoComponentsById};
 use crate::slab::{Keyed, consumer_groups::ConsumerGroups, partitions::Partitions};
-use crate::streaming::stats::stats::{StreamStats, TopicStats};
+use crate::streaming::stats::{StreamStats, TopicStats};
 use iggy_common::{CompressionAlgorithm, Identifier, IggyExpiry, IggyTimestamp, MaxTopicSize};
 use slab::Slab;
 use std::cell::{Ref, RefMut};
@@ -326,6 +326,7 @@ impl TopicRoot {
 }
 
 // TODO: Move to separate module.
+#[allow(clippy::too_many_arguments)]
 pub fn create_and_insert_topics_mem(
     streams: &Streams,
     stream_id: &Identifier,

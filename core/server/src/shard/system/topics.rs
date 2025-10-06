@@ -21,7 +21,7 @@ use crate::shard::IggyShard;
 use crate::shard_info;
 use crate::slab::traits_ext::{EntityComponentSystem, EntityMarker, InsertCell, IntoComponents};
 use crate::streaming::session::Session;
-use crate::streaming::stats::stats::{StreamStats, TopicStats};
+use crate::streaming::stats::{StreamStats, TopicStats};
 use crate::streaming::topics::storage2::{create_topic_file_hierarchy, delete_topic_from_disk};
 use crate::streaming::topics::topic2::{self};
 use crate::streaming::{partitions, streams, topics};
@@ -31,9 +31,9 @@ use iggy_common::{
 };
 use std::str::FromStr;
 use std::sync::Arc;
-use std::u32;
 
 impl IggyShard {
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_topic2(
         &self,
         session: &Session,
@@ -94,40 +94,12 @@ impl IggyShard {
         Ok(topic)
     }
 
-    fn create_and_insert_topics_mem(
-        &self,
-        stream_id: &Identifier,
-        name: String,
-        replication_factor: u8,
-        message_expiry: IggyExpiry,
-        compression: CompressionAlgorithm,
-        max_topic_size: MaxTopicSize,
-        parent_stats: Arc<StreamStats>,
-    ) -> topic2::Topic {
-        let stats = Arc::new(TopicStats::new(parent_stats));
-        let now = IggyTimestamp::now();
-        let mut topic = topic2::Topic::new(
-            name,
-            stats,
-            now,
-            replication_factor,
-            message_expiry,
-            compression,
-            max_topic_size,
-        );
-
-        let id = self
-            .streams2
-            .with_topics(stream_id, |topics| topics.insert(topic.clone()));
-        topic.update_id(id);
-        topic
-    }
-
     pub fn create_topic2_bypass_auth(&self, stream_id: &Identifier, topic: topic2::Topic) -> usize {
         self.streams2
             .with_topics(stream_id, |topics| topics.insert(topic))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update_topic2(
         &self,
         session: &Session,
@@ -176,6 +148,7 @@ impl IggyShard {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update_topic_bypass_auth2(
         &self,
         stream_id: &Identifier,
@@ -198,6 +171,7 @@ impl IggyShard {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update_topic_base2(
         &self,
         stream_id: &Identifier,
