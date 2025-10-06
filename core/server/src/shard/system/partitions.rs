@@ -25,8 +25,6 @@ use crate::shard_info;
 use crate::slab::traits_ext::EntityMarker;
 use crate::slab::traits_ext::IntoComponents;
 use crate::streaming::partitions;
-use crate::streaming::partitions::journal::MemoryMessageJournal;
-use crate::streaming::partitions::log::SegmentedLog;
 use crate::streaming::partitions::partition2;
 use crate::streaming::partitions::storage2::create_partition_file_hierarchy;
 use crate::streaming::partitions::storage2::delete_partitions_from_disk;
@@ -35,7 +33,6 @@ use crate::streaming::segments::storage::create_segment_storage;
 use crate::streaming::session::Session;
 use crate::streaming::streams;
 use crate::streaming::topics;
-
 use error_set::ErrContext;
 use iggy_common::Identifier;
 use iggy_common::IggyError;
@@ -105,7 +102,6 @@ impl IggyShard {
 
         let shards_count = self.get_available_shards_count();
         for (partition_id, stats) in partitions.iter().map(|p| (p.id(), p.stats())) {
-            // TODO: Create shard table recordsj.
             let ns = IggyNamespace::new(numeric_stream_id, numeric_topic_id, partition_id);
             let shard_id = calculate_shard_assignment(&ns, shards_count);
             let shard_info = ShardInfo::new(shard_id);
@@ -266,7 +262,7 @@ impl IggyShard {
         let mut total_size_bytes = 0;
 
         for partition in partitions {
-            let (root, stats, _, _, _, _, mut log) = partition.into_components();
+            let (root, stats, _, _, _, _, _) = partition.into_components();
             let partition_id = root.id();
             let ns = IggyNamespace::new(numeric_stream_id, numeric_topic_id, partition_id);
             self.remove_shard_table_record(&ns);
