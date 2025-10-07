@@ -48,8 +48,8 @@ impl IggyShard {
                 .with_stream_by_id(stream_id, streams::helpers::get_stream_id());
             self.permissioner.borrow().store_consumer_offset(
                 session.get_user_id(),
-                stream_id as u32,
-                topic_id as u32
+                stream_id,
+                topic_id
             ).with_error_context(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - permission denied to store consumer offset for user with ID: {}, consumer: {consumer} in topic with ID: {topic_id} and stream with ID: {stream_id}",
@@ -101,8 +101,8 @@ impl IggyShard {
                 .with_stream_by_id(stream_id, streams::helpers::get_stream_id());
             self.permissioner.borrow().get_consumer_offset(
                 session.get_user_id(),
-                stream_id as u32,
-                topic_id as u32
+                stream_id,
+                topic_id
             ).with_error_context(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - permission denied to get consumer offset for user with ID: {}, consumer: {consumer} in topic with ID: {topic_id} and stream with ID: {stream_id}",
@@ -159,8 +159,8 @@ impl IggyShard {
                 .with_stream_by_id(stream_id, streams::helpers::get_stream_id());
             self.permissioner.borrow().delete_consumer_offset(
                 session.get_user_id(),
-                stream_id as u32,
-                topic_id as u32
+                stream_id,
+                topic_id
             ).with_error_context(|error| {
             format!(
                 "{COMPONENT} (error: {error}) - permission denied to delete consumer offset for user with ID: {}, consumer: {consumer} in topic with ID: {topic_id} and stream with ID: {stream_id}",

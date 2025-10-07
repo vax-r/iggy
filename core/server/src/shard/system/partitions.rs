@@ -41,8 +41,8 @@ impl IggyShard {
     fn validate_partition_permissions(
         &self,
         session: &Session,
-        stream_id: u32,
-        topic_id: u32,
+        stream_id: usize,
+        topic_id: usize,
         operation: &str,
     ) -> Result<(), IggyError> {
         let permissioner = self.permissioner.borrow();
@@ -81,8 +81,8 @@ impl IggyShard {
         // Claude garbage, rework this.
         self.validate_partition_permissions(
             session,
-            numeric_stream_id as u32,
-            numeric_topic_id as u32,
+            numeric_stream_id,
+            numeric_topic_id,
             "create",
         )?;
         let parent_stats =
@@ -244,8 +244,8 @@ impl IggyShard {
 
         self.validate_partition_permissions(
             session,
-            numeric_stream_id as u32,
-            numeric_topic_id as u32,
+            numeric_stream_id,
+            numeric_topic_id,
             "delete",
         )?;
 

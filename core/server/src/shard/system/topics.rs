@@ -46,7 +46,7 @@ impl IggyShard {
         {
             self.permissioner
             .borrow()
-                .create_topic(session.get_user_id(), numeric_stream_id as u32)
+                .create_topic(session.get_user_id(), numeric_stream_id)
                 .with_error_context(|error| {
                     format!(
                         "{COMPONENT} (error: {error}) - permission denied to create topic with name: {name} in stream with ID: {stream_id} for user with ID: {}",
@@ -120,8 +120,8 @@ impl IggyShard {
                 .with_stream_by_id(stream_id, streams::helpers::get_stream_id());
             self.permissioner.borrow().update_topic(
                 session.get_user_id(),
-                stream_id_val as u32,
-                topic_id_val as u32
+                stream_id_val,
+                topic_id_val
             ).with_error_context(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - permission denied to update topic for user with id: {}, stream ID: {}, topic ID: {}",
@@ -210,7 +210,7 @@ impl IggyShard {
             .with_stream_by_id(stream_id, streams::helpers::get_stream_id());
         self.permissioner
             .borrow()
-                .delete_topic(session.get_user_id(), numeric_stream_id as u32, numeric_topic_id as u32)
+                .delete_topic(session.get_user_id(), numeric_stream_id, numeric_topic_id)
                 .with_error_context(|error| {
                     format!(
                         "{COMPONENT} (error: {error}) - permission denied to delete topic with ID: {topic_id} in stream with ID: {stream_id} for user with ID: {}",
@@ -269,8 +269,8 @@ impl IggyShard {
                 .with_stream_by_id(stream_id, streams::helpers::get_stream_id());
             self.permissioner.borrow().purge_topic(
                 session.get_user_id(),
-                stream_id as u32,
-                topic_id as u32
+                stream_id,
+                topic_id
             ).with_error_context(|error| {
                 format!(
                     "{COMPONENT} (error: {error}) - permission denied to purge topic with ID: {topic_id} in stream with ID: {stream_id} for user with ID: {}",

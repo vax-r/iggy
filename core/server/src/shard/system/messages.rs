@@ -80,8 +80,8 @@ impl IggyShard {
             .borrow()
             .append_messages(
                 user_id,
-                numeric_stream_id as u32,
-                numeric_topic_id as u32,
+                numeric_stream_id,
+                numeric_topic_id,
             )
             .with_error_context(|error| {
                 format!("{COMPONENT} (error: {error}) - permission denied to append messages for user {} on stream ID: {}, topic ID: {}", user_id, numeric_stream_id as u32, numeric_topic_id as u32)
@@ -187,7 +187,7 @@ impl IggyShard {
 
         self.permissioner
             .borrow()
-            .poll_messages(user_id, numeric_stream_id as u32, numeric_topic_id as u32)
+            .poll_messages(user_id, numeric_stream_id, numeric_topic_id)
             .with_error_context(|error| format!(
                 "{COMPONENT} (error: {error}) - permission denied to poll messages for user {} on stream ID: {}, topic ID: {}",
                 user_id,
@@ -380,8 +380,8 @@ impl IggyShard {
             .borrow()
             .append_messages(
                 session.get_user_id(),
-                numeric_stream_id as u32,
-                numeric_topic_id as u32,
+                numeric_stream_id,
+                numeric_topic_id,
             )
             .with_error_context(|error| {
                 format!("{COMPONENT} (error: {error}) - permission denied to append messages for user {} on stream ID: {}, topic ID: {}", session.get_user_id(), numeric_stream_id as u32, numeric_topic_id as u32)

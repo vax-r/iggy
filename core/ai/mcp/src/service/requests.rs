@@ -411,7 +411,7 @@ pub struct Permissions {
     pub global: Option<GlobalPermissions>,
 
     #[schemars(description = "stream permissions (optional)")]
-    pub streams: Option<HashMap<u32, StreamPermissions>>,
+    pub streams: Option<HashMap<usize, StreamPermissions>>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -468,7 +468,7 @@ pub struct StreamPermissions {
     pub send_messages: Option<bool>,
 
     #[schemars(description = "topics permissions (optional)")]
-    pub topics: Option<HashMap<u32, TopicPermissions>>,
+    pub topics: Option<HashMap<usize, TopicPermissions>>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
